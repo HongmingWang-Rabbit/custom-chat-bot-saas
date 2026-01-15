@@ -2,6 +2,10 @@
 
 This folder contains session-based changelogs documenting code modifications made during development.
 
+## Automation
+
+Edits are automatically logged via Claude Code hooks. The hook at `.claude/settings.json` triggers `scripts/log-edit.sh` after each `Edit` or `Write` operation, appending entries to the current day's log file.
+
 ## Format
 
 Each file follows the naming convention: `YYYY-MM-DD-session.md`
@@ -12,4 +16,4 @@ If multiple sessions occur on the same day, use: `YYYY-MM-DD-session-2.md`
 
 | File | Description |
 |------|-------------|
-| [2026-01-15-session.md](./2026-01-15-session.md) | Supabase provisioning, logging system, test coverage |
+| [2026-01-15-session.md](./2026-01-15-session.md) | Session 1: Supabase provisioning, logging system, test coverage. Session 2: CLAUDE.md, hooks setup, custom commands, code review fixes |
