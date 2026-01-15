@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Default theme (overridden by tenant branding) */
+  --color-primary: #3B82F6;
+  --color-secondary: #1E40AF;
+  --color-background: #FFFFFF;
+  --color-text: #1F2937;
+  --color-accent: #10B981;
+  --font-family: Inter, system-ui, sans-serif;
+  --border-radius: 8px;
+
+  /* Muted colors */
+  --color-muted: #6B7280;
+  --color-muted-foreground: #9CA3AF;
+  --color-border: #E5E7EB;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #111827;
+    --color-text: #F9FAFB;
+    --color-muted: #9CA3AF;
+    --color-muted-foreground: #6B7280;
+    --color-border: #374151;
+  }
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: var(--color-background);
+  color: var(--color-text);
+}
+
+/* Prose styling for answers */
+.prose {
+  font-family: var(--font-family);
+  color: var(--color-text);
+  line-height: 1.75;
+}
+
+.prose p {
+  margin-bottom: 1rem;
+}
+
+/* Cursor animation for streaming */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
