@@ -37,3 +37,7 @@ next-env.d.ts
 # IDE
 .idea/
 .vscode/
+
+# Personal notes
+Orbiton Developer Test.md
+Think.md
