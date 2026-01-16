@@ -2,7 +2,7 @@
  * Embedding Service
  *
  * Generates vector embeddings for text using OpenAI's API.
- * Uses text-embedding-3-large (3072 dimensions) by default.
+ * Uses text-embedding-3-small (1536 dimensions) by default.
  */
 
 import OpenAI from 'openai';
@@ -31,8 +31,8 @@ export interface EmbeddingConfig {
 // Constants
 // =============================================================================
 
-export const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-large';
-export const EMBEDDING_DIMENSIONS = 3072;
+export const DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small';
+export const EMBEDDING_DIMENSIONS = 1536;
 const MAX_BATCH_SIZE = 100; // OpenAI limit
 
 // =============================================================================

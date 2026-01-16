@@ -742,6 +742,49 @@ export function QAInterface({ companySlug, branding }: QAInterfaceProps) {
 
 ---
 
+## Browser Compatibility
+
+The tenant branding system uses modern CSS features. Ensure your target browsers support these features.
+
+### Required CSS Features
+
+| Feature | Minimum Browser Versions | Usage |
+|---------|--------------------------|-------|
+| CSS Custom Properties | Chrome 49+, Firefox 31+, Safari 9.1+, Edge 15+ | Tenant branding colors, fonts |
+| `color-mix()` | Chrome 111+, Firefox 113+, Safari 16.2+, Edge 111+ | Transparent color overlays |
+| CSS Gradients | Chrome 26+, Firefox 16+, Safari 7+, Edge 12+ | Primary/secondary gradients |
+
+### `color-mix()` Usage
+
+The chat components use `color-mix()` for semi-transparent backgrounds:
+
+```css
+/* Creates a 15% opacity version of the primary color */
+background-color: color-mix(in srgb, var(--color-primary) 15%, transparent);
+
+/* Creates a 25% opacity shadow */
+box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+```
+
+### Fallback Strategy
+
+For browsers that don't support `color-mix()`:
+
+1. **Progressive Enhancement**: The layout and functionality work without the feature; only subtle background tints are affected.
+2. **Alternative**: If broader support is needed, replace `color-mix()` with fixed rgba colors or add a JavaScript polyfill.
+
+### Minimum Supported Browsers
+
+Based on the CSS features used:
+
+- **Chrome/Edge**: 111+ (March 2023)
+- **Firefox**: 113+ (May 2023)
+- **Safari**: 16.2+ (December 2022)
+
+For enterprise deployments requiring older browser support, consider replacing `color-mix()` with JavaScript-computed hex colors with opacity.
+
+---
+
 ## Component File Structure
 
 ```

@@ -56,6 +56,15 @@ export {
   type CitationContext,
 } from './citations';
 
+// Summarization
+export {
+  summarizeDocuments,
+  isBroadQuestion,
+  buildSummaryContext,
+  type DocumentSummary,
+  type SummarizationResult,
+} from './summarization';
+
 // RAG Service
 export {
   RAGService,
@@ -63,4 +72,5 @@ export {
   type RAGRequest,
   type RAGResponse,
   type RAGStreamCallbacks,
+  type RAGStatus,
 } from './service';

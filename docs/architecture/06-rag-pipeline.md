@@ -10,7 +10,7 @@ The Retrieval-Augmented Generation (RAG) pipeline combines vector similarity sea
 │                                                                              │
 │  ┌─────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐   │
 │  │ Question│───►│  HyDE       │───►│  Embedding  │───►│  Hybrid Search  │   │
-│  │         │    │  Expansion  │    │  (3072d)    │    │  (Vector + KW)  │   │
+│  │         │    │  Expansion  │    │  (1536d)    │    │  (Vector + KW)  │   │
 │  └─────────┘    └─────────────┘    └─────────────┘    └────────┬────────┘   │
 │                                                                 │            │
 │                                                                 ▼            │
@@ -288,7 +288,7 @@ The retrieval system combines **vector similarity** and **keyword matching** usi
 │      ▼                              ▼                               │   │
 │  ┌─────────────────┐         ┌─────────────────┐                    │   │
 │  │ Vector Search   │         │ Keyword Search  │                    │   │
-│  │ (3072d cosine)  │         │ (ts_rank)       │                    │   │
+│  │ (1536d cosine)  │         │ (ts_rank)       │                    │   │
 │  └────────┬────────┘         └────────┬────────┘                    │   │
 │           │                           │                             │   │
 │           ▼                           ▼                             │   │
@@ -365,14 +365,34 @@ LIMIT :top_k;
 
 ### Configuration
 
-```typescript
-// src/lib/rag/retrieval.ts
+All RAG configuration is centralized in `src/lib/rag/config.ts`:
 
-const HYDE_ENABLED = true;         // Enable HyDE query expansion
-const RRF_K = 60;                  // RRF constant
-const DEFAULT_CONFIDENCE_THRESHOLD = 0.6;  // Minimum vector similarity
-const DEFAULT_TOP_K = 5;           // Number of results to return
+```typescript
+// src/lib/rag/config.ts
+
+// Retrieval
+export const DEFAULT_TOP_K = 5;                    // Number of results to return
+export const DEFAULT_CONFIDENCE_THRESHOLD = 0.5;   // Minimum RRF score threshold
+export const RRF_K = 60;                           // RRF constant
+
+// Feature flags (from environment)
+export const HYDE_ENABLED = process.env.HYDE_ENABLED !== 'false';
+export const KEYWORD_EXTRACTION_ENABLED = process.env.KEYWORD_EXTRACTION_ENABLED !== 'false';
+export const RETRIEVAL_DEBUG = process.env.RETRIEVAL_DEBUG === 'true';
+
+// HyDE configuration
+export const HYDE_MODEL = process.env.HYDE_MODEL || 'gpt-4o-mini';
+export const HYDE_MAX_TOKENS = 150;
+export const HYDE_TEMPERATURE = 0.3;
 ```
+
+**Environment Variables for Feature Flags:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HYDE_ENABLED` | `true` | Enable HyDE for query expansion |
+| `KEYWORD_EXTRACTION_ENABLED` | `true` | Enable LLM keyword extraction |
+| `RETRIEVAL_DEBUG` | `false` | Enable verbose retrieval diagnostics |
+| `HYDE_MODEL` | `gpt-4o-mini` | Model for HyDE generation |
 
 ### Why Hybrid Search?
 
@@ -426,6 +446,19 @@ export function hasSufficientContext(
 ```
 
 ### Confidence Thresholds
+
+Confidence thresholds are defined in `src/lib/rag/config.ts`:
+
+```typescript
+// Confidence label thresholds
+export const CONFIDENCE_LABEL_HIGH_THRESHOLD = 0.8;
+export const CONFIDENCE_LABEL_MEDIUM_THRESHOLD = 0.6;
+
+// Similarity-to-confidence mapping
+export const SIMILARITY_TIER_VERY_HIGH = 0.9;
+export const SIMILARITY_TIER_HIGH = 0.8;
+export const SIMILARITY_TIER_MEDIUM = 0.7;
+```
 
 | Confidence | Interpretation | Action |
 |------------|----------------|--------|

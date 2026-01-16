@@ -74,8 +74,8 @@ docs/
 | Tenant Databases | PostgreSQL + pgvector |
 | Caching | Redis (optional, for RAG response caching) |
 | Encryption | AES-256-GCM |
-| LLM | OpenAI GPT-4o (adapter pattern) |
-| Embeddings | text-embedding-3-large (3072d) |
+| LLM | OpenAI GPT-4o-mini (adapter pattern) |
+| Embeddings | text-embedding-3-small (1536d) |
 | Retrieval | Hybrid search (vector + keyword) with RRF + HyDE |
 | Logging | Pino |
 | Styling | Tailwind CSS + shadcn/ui |
@@ -104,6 +104,12 @@ LOG_LEVEL=info
 UPSTASH_REDIS_REST_URL=https://your-db.upstash.io
 UPSTASH_REDIS_REST_TOKEN=your-token
 RAG_CACHE_TTL_SECONDS=3600
+
+# RAG feature flags (optional)
+HYDE_ENABLED=true                # Enable HyDE query expansion (default: true)
+KEYWORD_EXTRACTION_ENABLED=true  # Enable LLM keyword extraction (default: true)
+RETRIEVAL_DEBUG=false            # Enable retrieval diagnostics (default: false)
+HYDE_MODEL=gpt-4o-mini           # Model for HyDE generation
 ```
 
 ---
@@ -134,5 +140,5 @@ Session changelogs documenting code changes:
 
 | Date | Summary |
 |------|---------|
-| [2026-01-16](./edit-history/2026-01-16-session.md) | Provisioning fix, async provisioning, hard delete, Q&A AI analysis, document components refactor, Redis caching, HyDE + hybrid search, embedding upgrade |
+| [2026-01-16](./edit-history/2026-01-16-session.md) | Provisioning fix, async provisioning, hard delete, Q&A AI analysis, document components refactor, Redis caching, HyDE + hybrid search, centralized RAG config, parallel async optimization |
 | [2026-01-15](./edit-history/2026-01-15-session.md) | Supabase provisioning, logging system, test coverage |

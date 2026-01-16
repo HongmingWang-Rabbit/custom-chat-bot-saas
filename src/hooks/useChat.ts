@@ -13,6 +13,8 @@ import type { Message, CitationData } from '@/components/features/qa';
 // Types
 // =============================================================================
 
+export type LoadingStatus = 'searching' | 'generating' | null;
+
 interface UseChatOptions {
   tenantSlug: string;
   onError?: (error: string) => void;
@@ -21,6 +23,7 @@ interface UseChatOptions {
 interface UseChatReturn {
   messages: Message[];
   isLoading: boolean;
+  loadingStatus: LoadingStatus;
   error: string | null;
   sendMessage: (question: string) => Promise<void>;
   clearMessages: () => void;
@@ -31,6 +34,7 @@ interface SSEData {
   citations?: CitationData[];
   confidence?: number;
   retrievedChunks?: number;
+  status?: 'searching' | 'generating';
   error?: string;
 }
 
@@ -41,6 +45,7 @@ interface SSEData {
 export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>(null);
   const [error, setError] = useState<string | null>(null);
   const sessionIdRef = useRef<string>(generateSessionId());
 
@@ -138,6 +143,10 @@ export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn 
                   confidence = data.confidence;
                 }
 
+                if (data.status) {
+                  setLoadingStatus(data.status);
+                }
+
                 if (data.error) {
                   throw new Error(data.error);
                 }
@@ -185,6 +194,7 @@ export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn 
         );
       } finally {
         setIsLoading(false);
+        setLoadingStatus(null);
       }
     },
     [tenantSlug, isLoading, onError]
@@ -199,6 +209,7 @@ export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn 
   return {
     messages,
     isLoading,
+    loadingStatus,
     error,
     sendMessage,
     clearMessages,

@@ -84,8 +84,9 @@ npx tsx scripts/update-document-urls.ts  # Update document URLs in DB
 |------|---------|
 | `src/lib/services/tenant-service.ts` | Tenant CRUD, credential encryption/decryption, connection pooling, hard delete |
 | `src/lib/services/storage-service.ts` | Supabase Storage upload/download, signed URLs |
+| `src/lib/rag/config.ts` | Centralized RAG configuration (60+ constants for retrieval, scoring, chunking, LLM) |
 | `src/lib/rag/service.ts` | RAG pipeline orchestration: retrieve → rerank → prompt → generate (with caching) |
-| `src/lib/rag/retrieval.ts` | Hybrid search (vector + keyword) with RRF ranking |
+| `src/lib/rag/retrieval.ts` | Hybrid search (vector + keyword) with RRF ranking (1536 dims) |
 | `src/lib/rag/hyde.ts` | HyDE (Hypothetical Document Embeddings) for query expansion |
 | `src/lib/rag/citations.ts` | Parse [Citation N] references from LLM response |
 | `src/lib/cache/` | Redis-based RAG response caching (per-tenant, 1hr TTL) |
@@ -113,7 +114,7 @@ POST /api/qa
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ Embed text      │ (OpenAI text-embedding-3-large, 3072 dims)
+│ Embed text      │ (OpenAI text-embedding-3-small, 1536 dims)
 └────────┬────────┘
          ▼
 ┌─────────────────┐
@@ -172,6 +173,12 @@ Optional (Caching via Upstash):
 - `UPSTASH_REDIS_REST_URL` - Upstash Redis REST URL (enables RAG response caching)
 - `UPSTASH_REDIS_REST_TOKEN` - Upstash Redis REST token
 - `RAG_CACHE_TTL_SECONDS` - Cache TTL in seconds (default: 3600)
+
+Optional (RAG Feature Flags):
+- `HYDE_ENABLED` - Enable HyDE query expansion (default: true, set to "false" to disable)
+- `KEYWORD_EXTRACTION_ENABLED` - Enable LLM keyword extraction (default: true)
+- `RETRIEVAL_DEBUG` - Enable verbose retrieval diagnostics (default: false)
+- `HYDE_MODEL` - Model for HyDE generation (default: gpt-4o-mini)
 
 ## Testing Structure
 

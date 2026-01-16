@@ -1,19 +1,24 @@
 /**
- * HyDE (Hypothetical Document Embeddings)
+ * Query Expansion Module
  *
- * Improves retrieval by generating a hypothetical answer to the query,
- * then searching for documents similar to that answer.
+ * Contains LLM-powered query expansion techniques:
+ * - HyDE (Hypothetical Document Embeddings) for vector search
+ * - Keyword extraction for full-text search
  *
- * This bridges the gap between question-style queries and statement-style documents.
+ * These bridge the gap between user queries and document content.
  */
 
 import OpenAI from 'openai';
 import { logger } from '@/lib/logger';
+import {
+  HYDE_MODEL,
+  HYDE_MAX_TOKENS,
+  HYDE_TEMPERATURE,
+  KEYWORD_EXTRACTION_MAX_TOKENS,
+  KEYWORD_EXTRACTION_TEMPERATURE,
+} from './config';
 
 const log = logger.child({ layer: 'rag', service: 'HyDE' });
-
-// Model for HyDE generation (configurable via env, defaults to fast/cheap model)
-const HYDE_MODEL = process.env.HYDE_MODEL || 'gpt-4o-mini';
 
 /**
  * Generate a hypothetical document/answer for a query.
@@ -48,8 +53,8 @@ Just write the content directly as if it's from the source document.`,
           content: query,
         },
       ],
-      max_tokens: 150,
-      temperature: 0.3,
+      max_tokens: HYDE_MAX_TOKENS,
+      temperature: HYDE_TEMPERATURE,
     });
 
     const hypothetical = response.choices[0]?.message?.content?.trim();
@@ -70,4 +75,94 @@ Just write the content directly as if it's from the source document.`,
     );
     return query;
   }
+}
+
+/**
+ * Extract search keywords from a user query using LLM.
+ * This improves keyword search by identifying key terms, entities, and relevant synonyms.
+ *
+ * @example
+ * Input: "Summarize the financial performance"
+ * Output: "financial performance revenue profit earnings results fiscal"
+ */
+export async function extractSearchKeywords(
+  query: string,
+  apiKey: string | null
+): Promise<string> {
+  const key = apiKey ?? process.env.OPENAI_API_KEY;
+  if (!key) {
+    // Fall back to simple extraction if no API key
+    return extractBasicKeywords(query);
+  }
+
+  const client = new OpenAI({ apiKey: key });
+
+  try {
+    const response = await client.chat.completions.create({
+      model: HYDE_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a search keyword extractor for a company document search system.
+Given a user question, extract the most relevant search keywords that would match company disclosures, financial reports, and business documents.
+
+Rules:
+1. Extract key nouns, entities, and domain-specific terms
+2. Include common synonyms and related terms (e.g., "revenue" → also include "sales", "income")
+3. Remove filler words like "summarize", "explain", "tell me about", "what is"
+4. Keep the output concise: 5-15 keywords maximum
+5. Return ONLY space-separated keywords, no punctuation or explanations
+
+Examples:
+- "Summarize the financial performance" → "financial performance revenue profit earnings results fiscal year"
+- "What are the main risks?" → "risk factors risks challenges threats exposure vulnerabilities"
+- "Tell me about the CEO's compensation" → "CEO compensation executive salary bonus stock options pay"`,
+        },
+        {
+          role: 'user',
+          content: query,
+        },
+      ],
+      max_tokens: KEYWORD_EXTRACTION_MAX_TOKENS,
+      temperature: KEYWORD_EXTRACTION_TEMPERATURE,
+    });
+
+    const keywords = response.choices[0]?.message?.content?.trim();
+
+    if (keywords) {
+      // Clean up: ensure only alphanumeric and spaces
+      const cleaned = keywords
+        .toLowerCase()
+        .replace(/[^\w\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      log.debug(
+        { event: 'keywords_extracted', original: query, keywords: cleaned },
+        'Extracted search keywords'
+      );
+      return cleaned;
+    }
+
+    return extractBasicKeywords(query);
+  } catch (error) {
+    log.warn(
+      { event: 'keyword_extraction_error', error: error instanceof Error ? error.message : String(error) },
+      'Failed to extract keywords, using basic extraction'
+    );
+    return extractBasicKeywords(query);
+  }
+}
+
+/**
+ * Basic keyword extraction (fallback when LLM is unavailable).
+ * Simply extracts words longer than 2 characters.
+ */
+function extractBasicKeywords(query: string): string {
+  return query
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2)
+    .join(' ');
 }

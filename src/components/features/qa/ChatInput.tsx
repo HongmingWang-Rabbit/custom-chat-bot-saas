@@ -57,7 +57,9 @@ export function ChatInput({
 
   return (
     <form onSubmit={handleSubmit} className="relative">
-      <div className="flex items-end gap-3 p-3 bg-white border border-gray-200 rounded-xl shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition">
+      <div
+        className="flex items-end gap-3 p-3 bg-white border border-gray-200 rounded-xl shadow-sm focus-within:ring-2 focus-within:border-transparent transition ring-primary-theme"
+      >
         <textarea
           ref={textareaRef}
           value={value}
@@ -74,7 +76,7 @@ export function ChatInput({
           type="submit"
           disabled={disabled || !value.trim()}
           data-testid="chat-submit"
-          className="flex-shrink-0 p-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow"
+          className="flex-shrink-0 p-2.5 rounded-lg text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow hover:opacity-90 gradient-primary"
           aria-label="Send message"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

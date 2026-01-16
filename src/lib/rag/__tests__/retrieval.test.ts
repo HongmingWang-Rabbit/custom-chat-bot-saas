@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../embeddings', () => ({
   createEmbeddingService: vi.fn(() => ({
     embed: vi.fn().mockResolvedValue({
-      embedding: Array(3072).fill(0.1),
+      embedding: Array(1536).fill(0.1),
       tokens: 10,
     }),
   })),
@@ -16,6 +16,7 @@ vi.mock('../embeddings', () => ({
 
 vi.mock('../hyde', () => ({
   generateHypotheticalDocument: vi.fn().mockResolvedValue('hypothetical document text'),
+  extractSearchKeywords: vi.fn().mockResolvedValue('machine learning ai neural network'),
 }));
 
 import {
@@ -75,17 +76,19 @@ const mockChunkRows = [
   },
 ];
 
-// Mock DB needs to return count for first query, then chunks for second
+// Mock DB needs to return results for 2 queries in order (RETRIEVAL_DEBUG=false):
+// 1. Count query, 2. Main search query
+// When RETRIEVAL_DEBUG=true: 5 queries (count, pgvector test, dim check, embedding test, main search)
 const createMockDb = (rows: typeof mockChunkRows = mockChunkRows) => {
   let callCount = 0;
   return {
     execute: vi.fn().mockImplementation(() => {
       callCount++;
-      // First call is the count query
+      // First call is always the count query
       if (callCount === 1) {
         return Promise.resolve([{ count: '10' }]);
       }
-      // Second call is the main hybrid search query
+      // Second call (and beyond) is the main hybrid search query
       return Promise.resolve(rows);
     }),
   };
@@ -413,5 +416,219 @@ describe('rerankChunks', () => {
     const result = rerankChunks(chunks, 'machine learning');
 
     expect(result[0].confidence).toBeGreaterThan(0.75);
+  });
+});
+
+// =============================================================================
+// Keyword Extraction Tests
+// =============================================================================
+
+describe('keyword extraction and search mode selection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should use hybrid search when query has words > 2 characters', async () => {
+    const db = createMockDb();
+
+    // "what are the key risk factors" - all words > 2 chars
+    const result = await retrieveChunks(db as any, 'what are the key risk factors', null);
+
+    expect(result).toBeDefined();
+    // DB should be called 3 times: count query + pgvector test + hybrid search query
+    expect(db.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('should use vector-only search when query has only short words', async () => {
+    const db = createMockDb();
+
+    // "is it ok" - all words ≤ 2 chars, no valid keywords
+    const result = await retrieveChunks(db as any, 'is it ok', null);
+
+    expect(result).toBeDefined();
+    // DB should be called 3 times: count query + pgvector test + vector-only search query
+    expect(db.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('should use vector-only search for single-character query', async () => {
+    const db = createMockDb();
+
+    const result = await retrieveChunks(db as any, 'a', null);
+
+    expect(result).toBeDefined();
+    expect(db.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('should use vector-only search for query with only punctuation', async () => {
+    const db = createMockDb();
+
+    // After removing non-alphanumeric, this becomes empty
+    const result = await retrieveChunks(db as any, '???', null);
+
+    expect(result).toBeDefined();
+    expect(db.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it('should extract keywords correctly from mixed query', async () => {
+    const db = createMockDb();
+
+    // "is machine learning ok?" -> keywords: "machine", "learning" (words > 2 chars)
+    const result = await retrieveChunks(db as any, 'is machine learning ok?', null);
+
+    expect(result).toBeDefined();
+    expect(db.execute).toHaveBeenCalledTimes(2);
+  });
+});
+
+// =============================================================================
+// Database Error Handling Tests
+// =============================================================================
+
+describe('database error handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should sanitize database errors and not expose SQL details', async () => {
+    const dbError = new Error(
+      'Failed query: SELECT dc.id, dc.content FROM document_chunks WHERE embedding <=> [0.1, 0.2, 0.3]::vector'
+    );
+
+    const db = {
+      execute: vi.fn()
+        .mockResolvedValueOnce([{ count: '10' }]) // 1. Count query
+        .mockRejectedValueOnce(dbError),          // 2. Main search fails
+    };
+
+    await expect(retrieveChunks(db as any, 'test query', null)).rejects.toThrow(
+      'Failed to search documents. Please try again.'
+    );
+  });
+
+  it('should sanitize errors that contain embedding vectors', async () => {
+    const embeddingInError = new Error(
+      `Query failed: [${Array(100).fill(0.123456).join(',')}]::vector - syntax error`
+    );
+
+    const db = {
+      execute: vi.fn()
+        .mockResolvedValueOnce([{ count: '10' }]) // 1. Count query
+        .mockRejectedValueOnce(embeddingInError), // 2. Main search fails
+    };
+
+    await expect(retrieveChunks(db as any, 'test query', null)).rejects.toThrow(
+      'Failed to search documents. Please try again.'
+    );
+  });
+
+  it('should handle connection timeout errors gracefully', async () => {
+    const timeoutError = new Error('Connection timeout after 30000ms');
+
+    const db = {
+      execute: vi.fn()
+        .mockResolvedValueOnce([{ count: '10' }]) // 1. Count query
+        .mockRejectedValueOnce(timeoutError),     // 2. Main search fails
+    };
+
+    await expect(retrieveChunks(db as any, 'test query', null)).rejects.toThrow(
+      'Failed to search documents. Please try again.'
+    );
+  });
+
+  it('should handle websearch_to_tsquery errors gracefully', async () => {
+    const tsqueryError = new Error(
+      'syntax error in tsquery: "what are the key risk factors"'
+    );
+
+    const db = {
+      execute: vi.fn()
+        .mockResolvedValueOnce([{ count: '10' }]) // 1. Count query
+        .mockRejectedValueOnce(tsqueryError),     // 2. Main search fails
+    };
+
+    await expect(retrieveChunks(db as any, 'what are the key risk factors', null)).rejects.toThrow(
+      'Failed to search documents. Please try again.'
+    );
+  });
+
+  it('should handle main search errors gracefully', async () => {
+    const searchError = new Error('Database connection lost');
+
+    const db = {
+      execute: vi.fn()
+        .mockResolvedValueOnce([{ count: '10' }]) // 1. Count query
+        .mockRejectedValueOnce(searchError),      // 2. Main search fails
+    };
+
+    await expect(retrieveChunks(db as any, 'test query', null)).rejects.toThrow(
+      'Failed to search documents. Please try again.'
+    );
+  });
+});
+
+// =============================================================================
+// Edge Cases
+// =============================================================================
+
+describe('retrieval edge cases', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should handle query with special characters', async () => {
+    const db = createMockDb();
+
+    // Special characters should be stripped before keyword extraction
+    const result = await retrieveChunks(db as any, "what's the company's revenue?", null);
+
+    expect(result).toBeDefined();
+    expect(db.execute).toHaveBeenCalled();
+  });
+
+  it('should handle query with numbers', async () => {
+    const db = createMockDb();
+
+    const result = await retrieveChunks(db as any, 'revenue in 2024', null);
+
+    expect(result).toBeDefined();
+    expect(db.execute).toHaveBeenCalled();
+  });
+
+  it('should handle very long query', async () => {
+    const db = createMockDb();
+    const longQuery = 'what is the revenue '.repeat(50); // Long query
+
+    const result = await retrieveChunks(db as any, longQuery, null);
+
+    expect(result).toBeDefined();
+    expect(db.execute).toHaveBeenCalled();
+  });
+
+  it('should handle unicode characters in query', async () => {
+    const db = createMockDb();
+
+    const result = await retrieveChunks(db as any, '公司的收入是多少', null);
+
+    expect(result).toBeDefined();
+    expect(db.execute).toHaveBeenCalled();
+  });
+
+  it('should handle empty string query gracefully', async () => {
+    const db = createMockDb();
+
+    const result = await retrieveChunks(db as any, '', null);
+
+    expect(result).toBeDefined();
+    // Empty query means no keywords, should use vector-only search
+    expect(db.execute).toHaveBeenCalled();
+  });
+
+  it('should handle whitespace-only query', async () => {
+    const db = createMockDb();
+
+    const result = await retrieveChunks(db as any, '   \t\n  ', null);
+
+    expect(result).toBeDefined();
+    expect(db.execute).toHaveBeenCalled();
   });
 });

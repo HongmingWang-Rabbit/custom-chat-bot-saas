@@ -69,3 +69,33 @@ textarea::placeholder {
 .cursor-blink {
   animation: blink 1s step-end infinite;
 }
+
+/* =============================================================================
+   Tenant Branding Utilities
+   These use CSS custom properties set by the tenant branding system.
+   ============================================================================= */
+
+/* Primary gradient: top-left to bottom-right */
+.gradient-primary {
+  background: linear-gradient(to bottom right, var(--color-primary), var(--color-secondary));
+}
+
+/* Semi-transparent primary background (for subtle tints) */
+.bg-primary-tint {
+  background-color: color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+
+/* Primary color shadow (for elevated elements) */
+.shadow-primary {
+  box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+
+/* Text using primary color */
+.text-primary-theme {
+  color: var(--color-primary);
+}
+
+/* Focus ring using primary color */
+.ring-primary-theme {
+  --tw-ring-color: var(--color-primary);
+}

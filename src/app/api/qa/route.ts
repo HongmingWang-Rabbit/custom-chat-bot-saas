@@ -15,7 +15,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { getTenantService } from '@/lib/services/tenant-service';
-import { createRAGService, RAGResponse, Citation } from '@/lib/rag';
+import { createRAGService, RAGResponse, Citation, RAGStatus } from '@/lib/rag';
 import {
   shouldBlockInput,
   assessInputLegitimacy,
@@ -264,6 +264,9 @@ async function handleStreamingResponse(
         await ragService.queryStream(
           { query: question, tenantSlug, sessionId },
           {
+            onStatus: (status: RAGStatus) => {
+              sendSSE(controller, encoder, 'status', { status });
+            },
             onChunk: (chunk: string) => {
               sendSSE(controller, encoder, 'chunk', { content: chunk });
             },
@@ -275,7 +278,8 @@ async function handleStreamingResponse(
                   documentTitle: c.documentTitle,
                   snippet: c.chunkContent.slice(0, 150),
                   confidence: c.confidence,
-                  source: c.source,
+                  // Generate download URL for the document (with redirect for direct viewing)
+                  source: `/api/documents/${c.documentId}/download?tenantSlug=${encodeURIComponent(tenantSlug)}&redirect=true`,
                 })),
               });
             },
@@ -424,7 +428,8 @@ async function handleNonStreamingResponse(
           documentTitle: c.documentTitle,
           snippet: c.chunkContent.slice(0, 150),
           confidence: c.confidence,
-          source: c.source,
+          // Generate download URL for the document (with redirect for direct viewing)
+          source: `/api/documents/${c.documentId}/download?tenantSlug=${encodeURIComponent(tenantSlug)}&redirect=true`,
         })),
         confidence: response.confidence,
         retrievedChunks: response.retrievedChunks,

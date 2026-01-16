@@ -2,8 +2,8 @@
  * OpenAI adapter implementation.
  *
  * Supports:
- * - GPT-4o, GPT-4-turbo, GPT-3.5-turbo for completions
- * - text-embedding-3-small, text-embedding-3-large for embeddings
+ * - GPT-4o-mini (default, cheapest), GPT-4o, GPT-4-turbo for completions
+ * - text-embedding-3-small (default), text-embedding-3-large for embeddings
  * - Streaming responses
  * - Batch embeddings (native support)
  */
@@ -28,7 +28,7 @@ export class OpenAIAdapter extends BaseLLMAdapter {
   constructor(config: LLMAdapterConfig) {
     super({
       ...config,
-      defaultModel: config.defaultModel ?? 'gpt-4o',
+      defaultModel: config.defaultModel ?? 'gpt-4o-mini',
       defaultEmbeddingModel: config.defaultEmbeddingModel ?? 'text-embedding-3-small',
     });
 

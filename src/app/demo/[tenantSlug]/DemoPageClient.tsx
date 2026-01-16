@@ -42,7 +42,7 @@ export function DemoPageClient({
   tenantName,
   branding,
 }: DemoPageClientProps) {
-  const { messages, isLoading, sendMessage } = useChat({
+  const { messages, isLoading, loadingStatus, sendMessage } = useChat({
     tenantSlug,
     onError: (error) => {
       console.error('[DemoPage] Chat error:', error);
@@ -104,7 +104,7 @@ export function DemoPageClient({
                   className="h-8 w-auto"
                 />
               ) : (
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center gradient-primary">
                   <span className="text-white font-semibold">
                     {tenantName.charAt(0).toUpperCase()}
                   </span>
@@ -126,7 +126,7 @@ export function DemoPageClient({
               </Link>
               <Link
                 href="/admin"
-                className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                className="px-4 py-2 text-sm font-medium rounded-lg transition hover:opacity-80 text-primary-theme"
               >
                 Admin Panel
               </Link>
@@ -142,6 +142,7 @@ export function DemoPageClient({
             <ChatContainer
               messages={messages}
               isLoading={isLoading}
+              loadingStatus={loadingStatus}
               onSendMessage={sendMessage}
               tenantName={tenantName}
             />

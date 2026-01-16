@@ -7,7 +7,7 @@
  */
 
 import { useRef, useEffect } from 'react';
-import { ChatMessage, CitationData } from './ChatMessage';
+import { ChatMessage, CitationData, LoadingStatus } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 
 // =============================================================================
@@ -26,6 +26,7 @@ export interface Message {
 export interface ChatContainerProps {
   messages: Message[];
   isLoading: boolean;
+  loadingStatus?: LoadingStatus;
   onSendMessage: (question: string) => void;
   tenantName?: string;
 }
@@ -37,6 +38,7 @@ export interface ChatContainerProps {
 export function ChatContainer({
   messages,
   isLoading,
+  loadingStatus,
   onSendMessage,
   tenantName,
 }: ChatContainerProps) {
@@ -52,8 +54,13 @@ export function ChatContainer({
       {/* Header */}
       <div className="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-gray-50/50">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-blue-50 rounded-lg">
-            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="p-2 rounded-lg bg-primary-tint">
+            <svg
+              className="w-5 h-5 text-primary-theme"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
@@ -82,6 +89,7 @@ export function ChatContainer({
                 citations={message.citations}
                 confidence={message.confidence}
                 isStreaming={message.isStreaming}
+                loadingStatus={message.isStreaming ? loadingStatus : undefined}
               />
             ))}
             <div ref={messagesEndRef} />
@@ -106,7 +114,7 @@ export function ChatContainer({
 function EmptyState({ onSelectQuestion }: { onSelectQuestion: (question: string) => void }) {
   return (
     <div className="h-full flex flex-col items-center justify-center text-center px-4">
-      <div className="w-20 h-20 mb-6 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+      <div className="w-20 h-20 mb-6 rounded-2xl flex items-center justify-center gradient-primary shadow-primary">
         <svg
           className="w-10 h-10 text-white"
           fill="none"
@@ -148,9 +156,9 @@ function ExampleQuestion({ text, onClick }: { text: string; onClick: (question: 
       onClick={() => onClick(text)}
       className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl text-sm text-gray-700 text-left cursor-pointer transition"
     >
-      <span className="text-blue-500 mr-2">&ldquo;</span>
+      <span className="text-primary-theme mr-2">&ldquo;</span>
       {text}
-      <span className="text-blue-500 ml-1">&rdquo;</span>
+      <span className="text-primary-theme ml-1">&rdquo;</span>
     </button>
   );
 }

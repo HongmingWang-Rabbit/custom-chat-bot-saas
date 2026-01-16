@@ -16,6 +16,13 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
+// Schema default values for RAG config (must match values in @/lib/rag/config.ts)
+// Defined inline to avoid circular dependency: schema -> config -> schema
+const SCHEMA_DEFAULT_TOP_K = 5;
+const SCHEMA_DEFAULT_CONFIDENCE_THRESHOLD = 0.5;
+const SCHEMA_DEFAULT_CHUNK_SIZE = 500;
+const SCHEMA_DEFAULT_CHUNK_OVERLAP = 50;
+
 // =============================================================================
 // Tenants Table
 // =============================================================================
@@ -56,11 +63,12 @@ export const tenants = pgTable('tenants', {
   llmProvider: varchar('llm_provider', { length: 50 }).default('openai'),
 
   // RAG configuration (JSONB)
+  // Note: confidenceThreshold for hybrid RRF scoring (0.5 = rank #1 in vector search only)
   ragConfig: jsonb('rag_config').$type<RAGConfig>().default({
-    topK: 5,
-    confidenceThreshold: 0.6,
-    chunkSize: 500,
-    chunkOverlap: 50,
+    topK: SCHEMA_DEFAULT_TOP_K,
+    confidenceThreshold: SCHEMA_DEFAULT_CONFIDENCE_THRESHOLD,
+    chunkSize: SCHEMA_DEFAULT_CHUNK_SIZE,
+    chunkOverlap: SCHEMA_DEFAULT_CHUNK_OVERLAP,
   }),
 
   // Status
@@ -115,8 +123,8 @@ export const DEFAULT_BRANDING: TenantBranding = {
 };
 
 export const DEFAULT_RAG_CONFIG: RAGConfig = {
-  topK: 5,
-  confidenceThreshold: 0.6,
-  chunkSize: 500,
-  chunkOverlap: 50,
+  topK: SCHEMA_DEFAULT_TOP_K,
+  confidenceThreshold: SCHEMA_DEFAULT_CONFIDENCE_THRESHOLD,
+  chunkSize: SCHEMA_DEFAULT_CHUNK_SIZE,
+  chunkOverlap: SCHEMA_DEFAULT_CHUNK_OVERLAP,
 };

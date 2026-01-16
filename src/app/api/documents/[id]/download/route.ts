@@ -34,6 +34,7 @@ export async function GET(
   const { id: documentId } = await params;
   const { searchParams } = new URL(request.url);
   const tenantSlug = searchParams.get('tenantSlug');
+  const redirect = searchParams.get('redirect') === 'true';
 
   log.info({ event: 'request_start', documentId }, 'Document download requested');
 
@@ -148,9 +149,15 @@ export async function GET(
         documentId,
         expiresAt: expiresAt.toISOString(),
         total_ms: timer.elapsed(),
+        redirect,
       },
       'Download URL generated successfully'
     );
+
+    // If redirect=true, redirect to the signed URL directly
+    if (redirect) {
+      return Response.redirect(signedUrl, 302);
+    }
 
     return Response.json(
       {
