@@ -13,6 +13,7 @@ interface Document {
   status: string;
   chunkCount: number;
   fileSize: number | null;
+  hasOriginalFile?: boolean;
   createdAt: string;
 }
 
@@ -218,7 +219,14 @@ export default function DocumentsPage() {
       {!isLoading && tenantSlug && documents.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {documents.map((doc) => (
-            <DocumentCard key={doc.id} document={doc} formatFileSize={formatFileSize} />
+            <DocumentCard
+              key={doc.id}
+              document={doc}
+              tenantSlug={tenantSlug}
+              formatFileSize={formatFileSize}
+              onDeleted={fetchDocuments}
+              onUpdated={fetchDocuments}
+            />
           ))}
         </div>
       )}
@@ -259,11 +267,21 @@ export default function DocumentsPage() {
 
 function DocumentCard({
   document,
-  formatFileSize
+  tenantSlug,
+  formatFileSize,
+  onDeleted,
+  onUpdated,
 }: {
   document: Document;
+  tenantSlug: string;
   formatFileSize: (bytes: number | null) => string;
+  onDeleted: () => void;
+  onUpdated: () => void;
 }) {
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const statusColors: Record<string, string> = {
     ready: 'bg-green-100 text-green-700',
     processing: 'bg-blue-100 text-blue-700',
@@ -271,35 +289,348 @@ function DocumentCard({
     error: 'bg-red-100 text-red-700',
   };
 
-  const docTypeIcons: Record<string, string> = {
-    disclosure: '📋',
-    report: '📊',
-    faq: '❓',
-    filing: '📑',
-    other: '📄',
+  const handleDownload = async () => {
+    try {
+      const response = await fetch(`/api/documents/${document.id}/download?tenantSlug=${tenantSlug}`);
+      if (response.ok) {
+        const data = await response.json();
+        window.open(data.download.url, '_blank');
+      }
+    } catch (err) {
+      console.error('Download failed:', err);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Are you sure you want to delete "${document.title}"?`)) return;
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/documents/${document.id}?tenantSlug=${tenantSlug}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        onDeleted();
+      }
+    } catch (err) {
+      console.error('Delete failed:', err);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 hover:border-blue-300 hover:shadow-sm transition-all">
-      <div className="flex items-start gap-3 mb-4">
-        <div className="text-2xl">
-          {docTypeIcons[document.docType] || '📄'}
+    <>
+      <div className="bg-white rounded-xl border border-gray-200 p-5 hover:border-blue-300 hover:shadow-sm transition-all">
+        <div className="flex items-start gap-3 mb-3">
+          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-medium text-gray-900 truncate" title={document.title}>{document.title}</h3>
+            <p className="text-sm text-gray-500">{document.docType}</p>
+          </div>
+          <span className={`px-2 py-1 text-xs font-medium rounded-full flex-shrink-0 ${statusColors[document.status] || 'bg-gray-100 text-gray-700'}`}>
+            {document.status}
+          </span>
         </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-medium text-gray-900 truncate">{document.title}</h3>
-          <p className="text-sm text-gray-500">{document.docType}</p>
+
+        <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
+          <div className="flex items-center gap-3">
+            <span>{document.chunkCount} chunks</span>
+            <span>{formatFileSize(document.fileSize)}</span>
+          </div>
+          <span>{new Date(document.createdAt).toLocaleDateString()}</span>
         </div>
-        <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusColors[document.status] || 'bg-gray-100 text-gray-700'}`}>
-          {document.status}
-        </span>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-end gap-1 pt-3 border-t border-gray-100">
+          <button
+            onClick={() => setShowViewModal(true)}
+            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+            title="View Details"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setShowEditModal(true)}
+            className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+            title="Edit"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          {document.hasOriginalFile && (
+            <button
+              onClick={handleDownload}
+              className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+              title="Download"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            </button>
+          )}
+          <button
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-50"
+            title="Delete"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
       </div>
 
-      <div className="flex items-center justify-between text-sm text-gray-500">
-        <div className="flex items-center gap-4">
-          <span>{document.chunkCount} chunks</span>
-          <span>{formatFileSize(document.fileSize)}</span>
+      {/* View Modal */}
+      {showViewModal && (
+        <DocumentViewModal
+          document={document}
+          tenantSlug={tenantSlug}
+          onClose={() => setShowViewModal(false)}
+        />
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && (
+        <DocumentEditModal
+          document={document}
+          tenantSlug={tenantSlug}
+          onClose={() => setShowEditModal(false)}
+          onUpdated={() => {
+            setShowEditModal(false);
+            onUpdated();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function DocumentViewModal({
+  document,
+  tenantSlug,
+  onClose,
+}: {
+  document: Document;
+  tenantSlug: string;
+  onClose: () => void;
+}) {
+  const [content, setContent] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchContent() {
+      try {
+        const response = await fetch(`/api/documents/${document.id}?tenantSlug=${tenantSlug}`);
+        if (response.ok) {
+          const data = await response.json();
+          // Note: Content might not be returned in list API, just show metadata
+          setContent(data.document?.content || null);
+        }
+      } catch (err) {
+        console.error('Failed to fetch document:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchContent();
+  }, [document.id, tenantSlug]);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-xl flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex-1 min-w-0 mr-4">
+            <h2 className="text-lg font-semibold text-gray-900 truncate">{document.title}</h2>
+            <p className="text-sm text-gray-500">{document.docType} • {document.chunkCount} chunks</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition flex-shrink-0"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
-        <span>{new Date(document.createdAt).toLocaleDateString()}</span>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {isLoading ? (
+            <div className="text-center py-8 text-gray-500">Loading...</div>
+          ) : content ? (
+            <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono bg-gray-50 p-4 rounded-lg">
+              {content}
+            </pre>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">Status:</span>
+                  <span className="ml-2 font-medium text-gray-900">{document.status}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Chunks:</span>
+                  <span className="ml-2 font-medium text-gray-900">{document.chunkCount}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">File Size:</span>
+                  <span className="ml-2 font-medium text-gray-900">{document.fileSize ? `${(document.fileSize / 1024).toFixed(1)} KB` : '-'}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Created:</span>
+                  <span className="ml-2 font-medium text-gray-900">{new Date(document.createdAt).toLocaleString()}</span>
+                </div>
+              </div>
+              <p className="text-sm text-gray-500 italic">Document content is stored in chunks for efficient retrieval.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DocumentEditModal({
+  document,
+  tenantSlug,
+  onClose,
+  onUpdated,
+}: {
+  document: Document;
+  tenantSlug: string;
+  onClose: () => void;
+  onUpdated: () => void;
+}) {
+  const [title, setTitle] = useState(document.title);
+  const [docType, setDocType] = useState(document.docType);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const docTypes = [
+    { value: 'disclosure', label: 'Disclosure' },
+    { value: 'faq', label: 'FAQ' },
+    { value: 'report', label: 'Report' },
+    { value: 'filing', label: 'Filing' },
+    { value: 'other', label: 'Other' },
+  ];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/documents/${document.id}?tenantSlug=${tenantSlug}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, docType }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update document');
+      }
+
+      onUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900">Edit Document</h2>
+          <button
+            onClick={onClose}
+            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Title
+            </label>
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              placeholder="Document title"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Document Type
+            </label>
+            <select
+              value={docType}
+              onChange={(e) => setDocType(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+            >
+              {docTypes.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-gray-700 font-medium hover:bg-gray-100 rounded-lg transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving || !title.trim()}
+              className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -318,8 +649,6 @@ function UploadModal({
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [docType, setDocType] = useState('disclosure');
-  const [url, setUrl] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -370,9 +699,7 @@ function UploadModal({
         const formData = new FormData();
         formData.append('file', file);
         formData.append('tenantSlug', tenantSlug);
-        formData.append('docType', docType);
         if (title) formData.append('title', title);
-        if (url) formData.append('url', url);
 
         const response = await fetch('/api/documents/upload', {
           method: 'POST',
@@ -391,8 +718,6 @@ function UploadModal({
             tenantSlug,
             title,
             content,
-            docType,
-            url: url || undefined,
           }),
         });
 
@@ -412,7 +737,7 @@ function UploadModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-lg font-semibold text-gray-900">Upload Document</h2>
@@ -512,48 +837,22 @@ function UploadModal({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
+          {/* Title - only show for text mode or when user wants to override filename */}
+          {uploadMode === 'text' && (
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Title {uploadMode === 'text' && <span className="text-red-500">*</span>}
+                Title <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder={uploadMode === 'file' ? 'Auto from filename' : 'Document title'}
-                required={uploadMode === 'text'}
+                placeholder="Document title"
+                required
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Document Type</label>
-              <select
-                value={docType}
-                onChange={(e) => setDocType(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="disclosure">Disclosure</option>
-                <option value="faq">FAQ</option>
-                <option value="report">Report</option>
-                <option value="filing">Filing</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Source URL <span className="text-gray-400">(optional)</span>
-            </label>
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="https://..."
-            />
-          </div>
+          )}
 
           {uploadMode === 'text' && (
             <div>
@@ -582,7 +881,7 @@ function UploadModal({
             </button>
             <button
               type="submit"
-              disabled={isUploading || (uploadMode === 'file' && !file) || (uploadMode === 'text' && !content)}
+              disabled={isUploading || (uploadMode === 'file' && !file) || (uploadMode === 'text' && (!content || !title))}
               className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
             >
               {isUploading ? 'Uploading...' : 'Upload'}
