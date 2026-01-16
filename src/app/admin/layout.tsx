@@ -1,4 +1,8 @@
+'use client';
+
 import Link from 'next/link';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 /**
  * Admin layout with modern navigation.
@@ -10,6 +14,20 @@ export default function AdminLayout({
 }) {
   return (
     <div className="min-h-screen bg-gray-50">
+      <ToastContainer
+        position="top-right"
+        autoClose={4000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+        toastClassName="!rounded-xl !shadow-lg !border !border-gray-200"
+        progressClassName="!bg-blue-500"
+      />
       {/* Top Navigation */}
       <nav className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

@@ -5,6 +5,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { toast } from 'react-toastify';
 
 interface Document {
   id: string;
@@ -45,7 +46,7 @@ export default function DocumentsPage() {
           setTenants(data.tenants || []);
         }
       } catch (err) {
-        console.error('Failed to fetch tenants:', err);
+        toast.error('Failed to load organizations');
       }
     }
     fetchTenants();
@@ -297,7 +298,7 @@ function DocumentCard({
         window.open(data.download.url, '_blank');
       }
     } catch (err) {
-      console.error('Download failed:', err);
+      toast.error('Failed to download file');
     }
   };
 
@@ -310,10 +311,13 @@ function DocumentCard({
         method: 'DELETE',
       });
       if (response.ok) {
+        toast.success('Document deleted');
         onDeleted();
+      } else {
+        toast.error('Failed to delete document');
       }
     } catch (err) {
-      console.error('Delete failed:', err);
+      toast.error('Failed to delete document');
     } finally {
       setIsDeleting(false);
     }
@@ -436,7 +440,7 @@ function DocumentViewModal({
           setContent(data.document?.content || null);
         }
       } catch (err) {
-        console.error('Failed to fetch document:', err);
+        toast.error('Failed to load document details');
       } finally {
         setIsLoading(false);
       }
@@ -551,9 +555,12 @@ function DocumentEditModal({
         throw new Error(data.error || 'Failed to update document');
       }
 
+      toast.success('Document updated');
       onUpdated();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setError(message);
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -727,9 +734,12 @@ function UploadModal({
         }
       }
 
+      toast.success('Document uploaded successfully');
       onUploaded();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setError(message);
+      toast.error(message);
     } finally {
       setIsUploading(false);
     }
