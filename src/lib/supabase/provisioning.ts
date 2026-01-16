@@ -165,7 +165,7 @@ async function supabaseApi<T>(
 /**
  * Generate a secure random password for the database.
  */
-function generateSecurePassword(length: number = 32): string {
+export function generateSecurePassword(length: number = 32): string {
   const chars =
     'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
   const randomBytes = crypto.randomBytes(length);
@@ -434,69 +434,96 @@ function buildDirectDatabaseUrl(
 // =============================================================================
 
 /**
+ * Options for provisioning recovery.
+ */
+export interface ProvisioningOptions {
+  region?: string;
+  /** Pre-generated password for recovery (skip password generation) */
+  dbPassword?: string;
+  /** Existing project ref for recovery (skip project creation) */
+  existingProjectRef?: string;
+  /** Callback when project is created (for saving project ref) */
+  onProjectCreated?: (projectRef: string) => Promise<void>;
+}
+
+/**
  * Provision a new Supabase project for a tenant.
  *
  * This function:
  * 1. Validates credentials are configured
- * 2. Creates a new Supabase project
+ * 2. Creates a new Supabase project (or uses existing for recovery)
  * 3. Waits for the project to be ready
  * 4. Retrieves API keys
  * 5. Returns all credentials needed for tenant creation
  *
  * @param tenantSlug - Unique identifier for the tenant
- * @param region - Optional region override
+ * @param options - Provisioning options including recovery parameters
  * @returns All credentials needed to create the tenant
  */
 export async function provisionSupabaseProject(
   tenantSlug: string,
-  region?: string
+  options: ProvisioningOptions = {}
 ): Promise<SupabaseCredentials> {
   // Validate credentials are configured
   validateProvisioningCredentials();
 
-  console.log(`[Provisioning] Starting provisioning for tenant: ${tenantSlug}`);
+  const isRecovery = !!(options.dbPassword && options.existingProjectRef);
+  console.log(`[Provisioning] Starting provisioning for tenant: ${tenantSlug}${isRecovery ? ' (recovery mode)' : ''}`);
   const startTime = Date.now();
 
   try {
-    // Generate a secure password for the database
-    const dbPassword = generateSecurePassword(32);
+    // Use provided password or generate a new one
+    const dbPassword = options.dbPassword ?? generateSecurePassword(32);
+    let projectRef: string;
 
-    // Create the project (handles orphaned project cleanup automatically)
-    const project = await createProject(tenantSlug, dbPassword, region);
+    // Use existing project or create new one
+    if (options.existingProjectRef) {
+      console.log(`[Provisioning] Using existing project: ${options.existingProjectRef}`);
+      projectRef = options.existingProjectRef;
+    } else {
+      // Create the project (handles orphaned project cleanup automatically)
+      const project = await createProject(tenantSlug, dbPassword, options.region);
+      projectRef = project.ref;
+
+      // Notify caller about project creation (for saving ref)
+      if (options.onProjectCreated) {
+        await options.onProjectCreated(projectRef);
+      }
+    }
 
     // Wait for the project to be ready
-    await waitForProjectReady(project.ref);
+    await waitForProjectReady(projectRef);
 
     // Get API keys
-    const { anonKey, serviceKey } = await getProjectApiKeys(project.ref);
+    const { anonKey, serviceKey } = await getProjectApiKeys(projectRef);
 
     // Get pooler configuration from API (critical: host varies per project!)
-    console.log(`[Provisioning] Fetching pooler config for ${project.ref}...`);
-    const poolerConfig = await getPoolerConfig(project.ref);
+    console.log(`[Provisioning] Fetching pooler config for ${projectRef}...`);
+    const poolerConfig = await getPoolerConfig(projectRef);
     console.log(`[Provisioning] Pooler host: ${poolerConfig.db_host}`);
 
     // Build the database connection strings
     // Pooler URL is for production use (connection pooling)
     const databaseUrl = buildPoolerDatabaseUrl(poolerConfig, dbPassword);
     // Direct URL is for migrations/setup (pooler may not be ready immediately)
-    const directDatabaseUrl = buildDirectDatabaseUrl(project.ref, dbPassword);
+    const directDatabaseUrl = buildDirectDatabaseUrl(projectRef, dbPassword);
 
     // Create storage bucket for documents
-    console.log(`[Provisioning] Creating storage bucket for project ${project.ref}...`);
-    const storageBucket = await createStorageBucket(project.ref, serviceKey);
+    console.log(`[Provisioning] Creating storage bucket for project ${projectRef}...`);
+    const storageBucket = await createStorageBucket(projectRef, serviceKey);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(
-      `[Provisioning] Successfully provisioned project ${project.ref} in ${elapsed}s`
+      `[Provisioning] Successfully provisioned project ${projectRef} in ${elapsed}s`
     );
 
     return {
-      projectRef: project.ref,
+      projectRef,
       databaseUrl,
       directDatabaseUrl,
       serviceKey,
       anonKey,
-      apiUrl: `https://${project.ref}.supabase.co`,
+      apiUrl: `https://${projectRef}.supabase.co`,
       storageBucketName: storageBucket.bucketName,
     };
   } catch (error) {

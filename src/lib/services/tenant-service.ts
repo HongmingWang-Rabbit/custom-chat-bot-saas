@@ -33,6 +33,7 @@ import {
   provisionSupabaseProject,
   deleteSupabaseProject,
   isProvisioningConfigured,
+  generateSecurePassword,
   SupabaseCredentials,
 } from '@/lib/supabase/provisioning';
 import { runTenantMigrations, MigrationResult } from '@/lib/supabase/tenant-migrations';
@@ -258,6 +259,141 @@ export class TenantService {
   }
 
   // ===========================================================================
+  // Provisioning State Management
+  // ===========================================================================
+
+  /**
+   * Create or get a provisional tenant record for provisioning recovery.
+   * If a record exists in 'provisioning' status, returns the stored password.
+   * Otherwise creates a new provisional record.
+   *
+   * @returns The database password (new or recovered) and whether this is a recovery
+   */
+  async getOrCreateProvisioningState(
+    slug: string,
+    name: string,
+    generatePassword: () => string
+  ): Promise<{ dbPassword: string; isRecovery: boolean; projectRef: string | null }> {
+    // Check for existing provisional tenant
+    const existing = await this.getTenantAnyStatus(slug);
+
+    if (existing) {
+      // If it's in provisioning state, recover the password
+      if (existing.status === 'provisioning' && existing.encryptedDbPassword) {
+        try {
+          const dbPassword = decrypt(existing.encryptedDbPassword);
+          log.info(
+            { event: 'provisioning_recovery', slug, projectRef: existing.supabaseProjectRef },
+            'Recovering provisioning state from previous attempt'
+          );
+          return {
+            dbPassword,
+            isRecovery: true,
+            projectRef: existing.supabaseProjectRef,
+          };
+        } catch (error) {
+          log.warn(
+            { event: 'provisioning_recovery_failed', slug, error: error instanceof Error ? error.message : String(error) },
+            'Could not decrypt stored password, creating new provisioning state'
+          );
+        }
+      }
+
+      // If it exists in another status, it's a conflict
+      if (existing.status === 'active') {
+        throw new Error(`Tenant with slug "${slug}" already exists`);
+      }
+
+      // For other statuses (error, deleted), delete and recreate
+      log.info({ event: 'provisioning_cleanup', slug, status: existing.status }, 'Cleaning up old tenant record');
+      await this.mainDb.delete(tenants).where(eq(tenants.slug, slug));
+    }
+
+    // Generate new password and create provisional record
+    const dbPassword = generatePassword();
+
+    await this.mainDb.insert(tenants).values({
+      slug,
+      name,
+      status: 'provisioning',
+      encryptedDbPassword: encrypt(dbPassword),
+    });
+
+    log.info({ event: 'provisioning_state_created', slug }, 'Created provisional tenant record');
+
+    return {
+      dbPassword,
+      isRecovery: false,
+      projectRef: null,
+    };
+  }
+
+  /**
+   * Update provisioning state with Supabase project reference.
+   * Called after project creation to enable recovery if later steps fail.
+   */
+  async updateProvisioningProjectRef(slug: string, projectRef: string): Promise<void> {
+    await this.mainDb
+      .update(tenants)
+      .set({ supabaseProjectRef: projectRef, updatedAt: new Date() })
+      .where(eq(tenants.slug, slug));
+
+    log.debug({ event: 'provisioning_project_ref', slug, projectRef }, 'Updated project reference');
+  }
+
+  /**
+   * Complete provisioning by updating the provisional record with full credentials.
+   */
+  async completeProvisioning(
+    slug: string,
+    credentials: {
+      databaseUrl: string;
+      serviceKey: string;
+      anonKey: string;
+      llmApiKey?: string;
+    },
+    branding?: Partial<TenantBranding>,
+    ragConfig?: Partial<RAGConfig>
+  ): Promise<Tenant> {
+    const result = await this.mainDb
+      .update(tenants)
+      .set({
+        encryptedDatabaseUrl: encrypt(credentials.databaseUrl),
+        encryptedServiceKey: encrypt(credentials.serviceKey),
+        encryptedAnonKey: encrypt(credentials.anonKey),
+        encryptedLlmApiKey: credentials.llmApiKey ? encrypt(credentials.llmApiKey) : null,
+        databaseHost: this.maskHost(credentials.databaseUrl),
+        branding: { ...DEFAULT_BRANDING, ...branding },
+        ragConfig: { ...DEFAULT_RAG_CONFIG, ...ragConfig },
+        status: 'active',
+        // Clear provisioning-only fields
+        encryptedDbPassword: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenants.slug, slug))
+      .returning();
+
+    log.info({ event: 'provisioning_completed', slug }, 'Provisioning completed successfully');
+
+    return result[0];
+  }
+
+  /**
+   * Mark provisioning as failed.
+   */
+  async failProvisioning(slug: string, errorMessage: string): Promise<void> {
+    await this.mainDb
+      .update(tenants)
+      .set({
+        status: 'error',
+        updatedAt: new Date(),
+      })
+      .where(eq(tenants.slug, slug));
+
+    log.error({ event: 'provisioning_failed', slug, error: errorMessage }, 'Provisioning failed');
+  }
+
+  // ===========================================================================
   // Write Operations
   // ===========================================================================
 
@@ -301,12 +437,12 @@ export class TenantService {
   /**
    * Create a new tenant with automatic Supabase project provisioning.
    *
-   * This method:
-   * 1. Validates that Supabase Management API credentials are configured
-   * 2. Creates a new Supabase project for the tenant
+   * This method supports recovery from partial failures:
+   * 1. Stores password before creating project (enables recovery)
+   * 2. Creates a new Supabase project (or reuses existing on recovery)
    * 3. Waits for the project to be ready
    * 4. Runs database migrations (pgvector, tables, indexes)
-   * 5. Creates the tenant record with encrypted credentials
+   * 5. Completes the tenant record with full credentials
    *
    * @param params - Tenant creation parameters
    * @returns ProvisioningResult with tenant, credentials, and migration status
@@ -336,14 +472,31 @@ export class TenantService {
     const startTime = Date.now();
 
     try {
-      // Step 2: Provision the Supabase project
-      log.debug({ event: 'supabase_provisioning', slug: params.slug }, 'Provisioning Supabase project');
-      const supabaseCredentials = await provisionSupabaseProject(
-        params.slug,
-        params.region
-      );
+      // Step 2: Get or create provisioning state (stores password for recovery)
+      const { dbPassword, isRecovery, projectRef: existingProjectRef } =
+        await this.getOrCreateProvisioningState(
+          params.slug,
+          params.name,
+          generateSecurePassword
+        );
 
-      // Step 3: Run tenant database migrations
+      if (isRecovery) {
+        log.info({ event: 'provisioning_recovery', slug: params.slug, projectRef: existingProjectRef }, 'Recovering from previous attempt');
+      }
+
+      // Step 3: Provision the Supabase project
+      log.debug({ event: 'supabase_provisioning', slug: params.slug }, 'Provisioning Supabase project');
+      const supabaseCredentials = await provisionSupabaseProject(params.slug, {
+        region: params.region,
+        dbPassword,
+        existingProjectRef: existingProjectRef ?? undefined,
+        onProjectCreated: async (projectRef) => {
+          // Save project ref immediately so we can recover if later steps fail
+          await this.updateProvisioningProjectRef(params.slug, projectRef);
+        },
+      });
+
+      // Step 4: Run tenant database migrations
       log.debug({ event: 'migrations_start', slug: params.slug }, 'Running database migrations');
       const migrations = await runTenantMigrations(supabaseCredentials.databaseUrl);
 
@@ -355,18 +508,19 @@ export class TenantService {
         // Continue anyway - tenant can be created, migrations can be retried
       }
 
-      // Step 4: Create the tenant record with encrypted credentials
-      log.debug({ event: 'creating_record', slug: params.slug }, 'Creating tenant record');
-      const tenant = await this.createTenant({
-        slug: params.slug,
-        name: params.name,
-        databaseUrl: supabaseCredentials.databaseUrl,
-        serviceKey: supabaseCredentials.serviceKey,
-        anonKey: supabaseCredentials.anonKey,
-        llmApiKey: params.llmApiKey,
-        branding: params.branding,
-        ragConfig: params.ragConfig,
-      });
+      // Step 5: Complete provisioning with full credentials
+      log.debug({ event: 'completing_provisioning', slug: params.slug }, 'Completing tenant record');
+      const tenant = await this.completeProvisioning(
+        params.slug,
+        {
+          databaseUrl: supabaseCredentials.databaseUrl,
+          serviceKey: supabaseCredentials.serviceKey,
+          anonKey: supabaseCredentials.anonKey,
+          llmApiKey: params.llmApiKey,
+        },
+        params.branding,
+        params.ragConfig
+      );
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       log.info(

@@ -26,10 +26,14 @@ export const tenants = pgTable('tenants', {
   name: varchar('name', { length: 255 }).notNull(),
 
   // Encrypted sensitive data (AES-256-GCM format: iv:authTag:ciphertext)
-  encryptedDatabaseUrl: text('encrypted_database_url').notNull(),
+  encryptedDatabaseUrl: text('encrypted_database_url'),
   encryptedServiceKey: text('encrypted_service_key'),
   encryptedAnonKey: text('encrypted_anon_key'),
   encryptedLlmApiKey: text('encrypted_llm_api_key'),
+
+  // Provisioning state (for recovery if provisioning fails partway)
+  supabaseProjectRef: varchar('supabase_project_ref', { length: 100 }),
+  encryptedDbPassword: text('encrypted_db_password'), // Stored during provisioning for recovery
 
   // Non-sensitive display/config
   databaseHost: varchar('database_host', { length: 255 }),
