@@ -198,34 +198,32 @@ async function findProjectByName(name: string): Promise<ProjectStatus | null> {
 }
 
 /**
- * Reset the database password for a project.
- * Used when recovering an existing project.
+ * Delete a project by reference.
+ * Used to clean up orphaned projects before recreation.
  */
-async function resetDatabasePassword(
-  projectRef: string,
-  newPassword: string
-): Promise<void> {
-  console.log(`[Provisioning] Resetting database password for ${projectRef}...`);
+async function deleteProjectByRef(projectRef: string): Promise<void> {
+  console.log(`[Provisioning] Deleting orphaned project ${projectRef}...`);
 
-  await supabaseApi(`/projects/${projectRef}/config/database`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      db_pass: newPassword,
-    }),
+  await supabaseApi(`/projects/${projectRef}`, {
+    method: 'DELETE',
   });
 
-  console.log(`[Provisioning] Database password reset successfully`);
+  // Wait a bit for deletion to propagate
+  console.log(`[Provisioning] Waiting for project deletion to complete...`);
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+
+  console.log(`[Provisioning] Project ${projectRef} deleted successfully`);
 }
 
 /**
  * Create a new Supabase project for a tenant.
- * If the project already exists, attempts to recover it.
+ * If the project already exists (orphaned from failed attempt), deletes it and recreates.
  */
 async function createProject(
   tenantSlug: string,
   dbPassword: string,
   region?: string
-): Promise<{ project: CreateProjectResponse; isRecovered: boolean }> {
+): Promise<CreateProjectResponse> {
   const orgId = process.env.SUPABASE_ORG_ID;
   const projectRegion =
     region || process.env.SUPABASE_DEFAULT_REGION || DEFAULT_REGION;
@@ -248,38 +246,42 @@ async function createProject(
 
     console.log(`[Provisioning] Project created: ${response.ref}`);
 
-    return { project: response, isRecovered: false };
+    return response;
   } catch (error) {
-    // Check if project already exists - attempt recovery
+    // Check if project already exists - delete and retry
     if (
       error instanceof Error &&
       error.message.includes('already exists')
     ) {
-      console.log(`[Provisioning] Project ${projectName} already exists, attempting recovery...`);
+      console.log(`[Provisioning] Project ${projectName} already exists (orphaned), cleaning up...`);
 
       const existingProject = await findProjectByName(projectName);
       if (!existingProject) {
         throw new Error(
           `Project ${projectName} exists but could not be found. ` +
-          `Please check Supabase dashboard and delete orphaned projects.`
+          `Please check Supabase dashboard and delete orphaned projects manually.`
         );
       }
 
-      // Reset the database password so we can connect
-      await resetDatabasePassword(existingProject.ref, dbPassword);
+      // Delete the orphaned project
+      await deleteProjectByRef(existingProject.ref);
 
-      console.log(`[Provisioning] Recovered existing project: ${existingProject.ref}`);
+      // Retry creation
+      console.log(`[Provisioning] Retrying project creation after cleanup...`);
+      const response = await supabaseApi<CreateProjectResponse>('/projects', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: projectName,
+          organization_id: orgId,
+          region: projectRegion,
+          plan: PROJECT_PLAN,
+          db_pass: dbPassword,
+        }),
+      });
 
-      return {
-        project: {
-          id: existingProject.id,
-          ref: existingProject.ref,
-          name: existingProject.name,
-          region: existingProject.region,
-          created_at: existingProject.createdAt,
-        } as CreateProjectResponse,
-        isRecovered: true,
-      };
+      console.log(`[Provisioning] Project created after cleanup: ${response.ref}`);
+
+      return response;
     }
 
     throw error;
@@ -439,12 +441,8 @@ export async function provisionSupabaseProject(
     // Generate a secure password for the database
     const dbPassword = generateSecurePassword(32);
 
-    // Create the project (or recover existing one)
-    const { project, isRecovered } = await createProject(tenantSlug, dbPassword, region);
-
-    if (isRecovered) {
-      console.log(`[Provisioning] Using recovered project ${project.ref}`);
-    }
+    // Create the project (handles orphaned project cleanup automatically)
+    const project = await createProject(tenantSlug, dbPassword, region);
 
     // Wait for the project to be ready
     await waitForProjectReady(project.ref);
