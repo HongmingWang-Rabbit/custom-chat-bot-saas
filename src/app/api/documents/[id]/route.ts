@@ -37,7 +37,6 @@ export async function GET(
 ) {
   const ctx = createRequestContext({ path: '/api/documents/[id]', method: 'GET' });
   const log = createLayerLogger('api', ctx);
-  const timer = new Timer();
 
   const { id: documentId } = await params;
   const { searchParams } = new URL(request.url);
