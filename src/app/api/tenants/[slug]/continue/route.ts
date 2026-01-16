@@ -163,8 +163,8 @@ export async function POST(
     if (hasCredentials) {
       log.info({ event: 'step_migrations', slug }, 'Running migrations...');
 
-      // Get decrypted credentials
-      const tenantWithSecrets = await tenantService.getTenantWithSecrets(slug);
+      // Get decrypted credentials (anyStatus=true since we're still provisioning)
+      const tenantWithSecrets = await tenantService.getTenantWithSecrets(slug, true);
       if (!tenantWithSecrets) {
         throw new Error('Failed to get tenant credentials');
       }

@@ -144,9 +144,12 @@ export class TenantService {
   /**
    * Get tenant with decrypted secrets.
    * Use sparingly - only when database access is needed.
+   * By default only returns active tenants. Set anyStatus=true for provisioning.
    */
-  async getTenantWithSecrets(slug: string): Promise<TenantWithSecrets | null> {
-    const tenant = await this.getTenant(slug);
+  async getTenantWithSecrets(slug: string, anyStatus = false): Promise<TenantWithSecrets | null> {
+    const tenant = anyStatus
+      ? await this.getTenantAnyStatus(slug)
+      : await this.getTenant(slug);
     if (!tenant) return null;
 
     // Database URL is required for a functioning tenant
