@@ -40,6 +40,13 @@ interface SSEData {
 }
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/** Maximum buffer size for SSE parsing to prevent memory exhaustion (1MB) */
+const MAX_BUFFER_SIZE = 1024 * 1024;
+
+// =============================================================================
 // Hook
 // =============================================================================
 
@@ -124,6 +131,12 @@ export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn 
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
+
+          // Prevent memory exhaustion from malformed streams
+          if (buffer.length > MAX_BUFFER_SIZE) {
+            throw new Error('Stream buffer exceeded maximum size');
+          }
+
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
@@ -166,17 +179,13 @@ export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn 
                 }
               } catch (parseError) {
                 // Re-throw application errors (non-JSON parse errors)
-                if (
-                  parseError instanceof Error &&
-                  !parseError.message.includes('Unexpected token') &&
-                  !parseError.message.includes('JSON')
-                ) {
+                // SyntaxError is thrown by JSON.parse for malformed JSON
+                const isJsonParseError = parseError instanceof SyntaxError;
+                if (!isJsonParseError) {
                   throw parseError;
                 }
-                // Log JSON parse errors for debugging
-                if (dataStr.trim()) {
-                  console.warn('Failed to parse SSE data:', dataStr);
-                }
+                // Ignore JSON parse errors for incomplete/empty data chunks
+                // These are expected during SSE streaming
               }
             }
           }

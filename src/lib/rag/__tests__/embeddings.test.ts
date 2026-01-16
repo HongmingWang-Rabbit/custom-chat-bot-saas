@@ -45,11 +45,11 @@ const createMockOpenAI = () => {
 
 describe('Embedding Constants', () => {
   it('should export correct default model', () => {
-    expect(DEFAULT_EMBEDDING_MODEL).toBe('text-embedding-3-small');
+    expect(DEFAULT_EMBEDDING_MODEL).toBe('text-embedding-3-large');
   });
 
   it('should export correct dimensions', () => {
-    expect(EMBEDDING_DIMENSIONS).toBe(1536);
+    expect(EMBEDDING_DIMENSIONS).toBe(3072);
   });
 });
 
@@ -104,7 +104,7 @@ describe('EmbeddingService', () => {
     it('should generate embedding for text', async () => {
       const { mockCreate } = createMockOpenAI();
       mockCreate.mockResolvedValue({
-        data: [{ embedding: Array(1536).fill(0.1) }],
+        data: [{ embedding: Array(3072).fill(0.1) }],
         usage: { total_tokens: 10 },
       });
 
@@ -112,11 +112,11 @@ describe('EmbeddingService', () => {
       const result = await service.embed('Hello world');
 
       expect(mockCreate).toHaveBeenCalledWith({
-        model: 'text-embedding-3-small',
+        model: 'text-embedding-3-large',
         input: 'Hello world',
-        dimensions: 1536,
+        dimensions: 3072,
       });
-      expect(result.embedding).toHaveLength(1536);
+      expect(result.embedding).toHaveLength(3072);
       expect(result.tokens).toBe(10);
     });
 
@@ -179,9 +179,9 @@ describe('EmbeddingService', () => {
 
       // Should only process valid texts
       expect(mockCreate).toHaveBeenCalledWith({
-        model: 'text-embedding-3-small',
+        model: 'text-embedding-3-large',
         input: ['valid', 'also valid'],
-        dimensions: 1536,
+        dimensions: 3072,
       });
       expect(result.embeddings).toHaveLength(2);
       expect(result.totalTokens).toBe(20);

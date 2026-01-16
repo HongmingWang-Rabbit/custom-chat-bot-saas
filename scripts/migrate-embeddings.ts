@@ -19,6 +19,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
+import OpenAI from 'openai';
 
 // =============================================================================
 // Configuration
@@ -77,7 +78,6 @@ async function generateEmbeddings(
   texts: string[],
   apiKey: string
 ): Promise<number[][]> {
-  const OpenAI = (await import('openai')).default;
   const client = new OpenAI({ apiKey });
 
   const allEmbeddings: number[][] = [];
@@ -179,42 +179,64 @@ async function migrateTenant(
     const embeddings = await generateEmbeddings(texts, openaiApiKey);
 
     // Step 3: Alter column dimension (drop and recreate)
+    // Use transaction for atomic schema changes with rollback capability
     console.log('  Updating table schema...');
 
-    // Create temp column, copy data, drop old, rename
+    // Clean up any leftover temp column from failed previous runs
     await tenantDb.execute(sql`
       ALTER TABLE document_chunks DROP COLUMN IF EXISTS embedding_new
-    `).catch(() => {});
+    `).catch((err) => {
+      console.log(`    Note: cleanup of embedding_new column: ${err.message || 'skipped'}`);
+    });
 
-    await tenantDb.execute(sql`
-      ALTER TABLE document_chunks ADD COLUMN embedding_new vector(3072)
-    `);
+    // Begin transaction for schema changes
+    await tenantDb.execute(sql`BEGIN`);
 
-    // Step 4: Update embeddings
-    console.log('  Updating embeddings...');
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const embedding = embeddings[i];
-      const embeddingStr = `[${embedding.join(',')}]`;
-
+    try {
       await tenantDb.execute(sql`
-        UPDATE document_chunks
-        SET embedding_new = ${embeddingStr}::vector
-        WHERE id = ${chunk.id}::uuid
+        ALTER TABLE document_chunks ADD COLUMN embedding_new vector(3072)
       `);
 
-      if ((i + 1) % 50 === 0 || i === chunks.length - 1) {
-        console.log(`    Updated ${i + 1}/${chunks.length} chunks`);
+      // Step 4: Update embeddings
+      // Validate and format embeddings safely (values are floats from OpenAI API)
+      console.log('  Updating embeddings...');
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const embedding = embeddings[i];
+
+        // Validate embedding is array of numbers (defense against unexpected data)
+        if (!Array.isArray(embedding) || !embedding.every(v => typeof v === 'number' && isFinite(v))) {
+          throw new Error(`Invalid embedding at index ${i}: expected array of finite numbers`);
+        }
+
+        // Format as pgvector literal - values are validated floats
+        const embeddingStr = `[${embedding.join(',')}]`;
+
+        await tenantDb.execute(sql`
+          UPDATE document_chunks
+          SET embedding_new = ${embeddingStr}::vector
+          WHERE id = ${chunk.id}::uuid
+        `);
+
+        if ((i + 1) % 50 === 0 || i === chunks.length - 1) {
+          console.log(`    Updated ${i + 1}/${chunks.length} chunks`);
+        }
       }
+
+      // Step 5: Swap columns (within transaction)
+      console.log('  Finalizing schema changes...');
+      await tenantDb.execute(sql`ALTER TABLE document_chunks DROP COLUMN embedding`);
+      await tenantDb.execute(sql`ALTER TABLE document_chunks RENAME COLUMN embedding_new TO embedding`);
+
+      // Commit transaction
+      await tenantDb.execute(sql`COMMIT`);
+      console.log('  ✓ Migration complete');
+    } catch (txError) {
+      // Rollback on any error
+      console.log('  ⚠ Error during migration, rolling back...');
+      await tenantDb.execute(sql`ROLLBACK`).catch(() => {});
+      throw txError;
     }
-
-    // Step 5: Swap columns
-    console.log('  Finalizing schema changes...');
-    await tenantDb.execute(sql`ALTER TABLE document_chunks DROP COLUMN embedding`);
-    await tenantDb.execute(sql`ALTER TABLE document_chunks RENAME COLUMN embedding_new TO embedding`);
-
-    // Step 6: Recreate indexes (optional, skip for high dimensions)
-    console.log('  ✓ Migration complete');
 
     return { success: true, chunksUpdated: chunks.length };
   } catch (error) {
