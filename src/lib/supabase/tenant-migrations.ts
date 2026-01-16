@@ -29,6 +29,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 const CREATE_DOCUMENTS_TABLE = `
 CREATE TABLE IF NOT EXISTS documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_slug VARCHAR(100) NOT NULL,
   title VARCHAR(500) NOT NULL,
   content TEXT NOT NULL,
   url VARCHAR(1000),
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 -- Indexes
+CREATE INDEX IF NOT EXISTS idx_documents_company_slug ON documents(company_slug);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
 `;
@@ -65,16 +67,35 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS storage_key VARCHAR(500);
 `;
 
 /**
+ * SQL to add company_slug column to existing documents table.
+ * This is an incremental migration for existing tenant databases.
+ */
+const ADD_COMPANY_SLUG_TO_DOCUMENTS = `
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS company_slug VARCHAR(100);
+CREATE INDEX IF NOT EXISTS idx_documents_company_slug ON documents(company_slug);
+`;
+
+/**
+ * SQL to add company_slug column to existing document_chunks table.
+ * This is an incremental migration for existing tenant databases.
+ */
+const ADD_COMPANY_SLUG_TO_CHUNKS = `
+ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS company_slug VARCHAR(100);
+CREATE INDEX IF NOT EXISTS idx_document_chunks_company_slug ON document_chunks(company_slug);
+`;
+
+/**
  * SQL to create the document_chunks table with pgvector.
  */
 const CREATE_DOCUMENT_CHUNKS_TABLE = `
 CREATE TABLE IF NOT EXISTS document_chunks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   doc_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  company_slug VARCHAR(100) NOT NULL,
   content TEXT NOT NULL,
 
-  -- pgvector embedding (1536 dimensions for OpenAI text-embedding-3-small)
-  embedding vector(1536),
+  -- pgvector embedding (3072 dimensions for OpenAI text-embedding-3-large)
+  embedding vector(3072),
 
   -- Position tracking
   chunk_index INTEGER NOT NULL,
@@ -91,6 +112,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_document_chunks_doc_id ON document_chunks(doc_id);
+CREATE INDEX IF NOT EXISTS idx_document_chunks_company_slug ON document_chunks(company_slug);
 `;
 
 /**
@@ -164,7 +186,7 @@ CREATE TABLE IF NOT EXISTS settings (
  */
 const CREATE_MATCH_DOCUMENTS_FUNCTION = `
 CREATE OR REPLACE FUNCTION match_documents(
-  query_embedding vector(1536),
+  query_embedding vector(3072),
   match_count INT DEFAULT 5,
   match_threshold FLOAT DEFAULT 0.0
 )
@@ -245,10 +267,20 @@ export async function runTenantMigrations(
     await sql.unsafe(ADD_STORAGE_KEY_COLUMN);
     migrationsRun.push('storage_key_column');
 
+    // 2c. Add company_slug column to documents (for existing databases)
+    console.log('[Migrations] Adding company_slug to documents...');
+    await sql.unsafe(ADD_COMPANY_SLUG_TO_DOCUMENTS);
+    migrationsRun.push('company_slug_documents');
+
     // 3. Create document_chunks table
     console.log('[Migrations] Creating document_chunks table...');
     await sql.unsafe(CREATE_DOCUMENT_CHUNKS_TABLE);
     migrationsRun.push('document_chunks_table');
+
+    // 3b. Add company_slug column to document_chunks (for existing databases)
+    console.log('[Migrations] Adding company_slug to document_chunks...');
+    await sql.unsafe(ADD_COMPANY_SLUG_TO_CHUNKS);
+    migrationsRun.push('company_slug_chunks');
 
     // 4. Create qa_logs table
     console.log('[Migrations] Creating qa_logs table...');
