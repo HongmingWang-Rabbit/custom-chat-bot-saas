@@ -52,7 +52,12 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
           MASTER_KEY: ${{ secrets.MASTER_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: npm run seed
+        run: |
+          # Create .env file for scripts that use --env-file
+          echo "DATABASE_URL=$DATABASE_URL" >> .env
+          echo "MASTER_KEY=$MASTER_KEY" >> .env
+          echo "OPENAI_API_KEY=$OPENAI_API_KEY" >> .env
+          npm run seed
 
       - name: Build application
         env:
