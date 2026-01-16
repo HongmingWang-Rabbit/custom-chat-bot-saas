@@ -242,7 +242,8 @@ export class TenantService {
 
   /**
    * List all tenants (without secrets).
-   * Includes both 'active' and 'provisioning' status tenants.
+   * Includes 'active', 'provisioning', and 'error' status tenants.
+   * Excludes 'deleted' tenants.
    */
   async listTenants(): Promise<Tenant[]> {
     return this.mainDb
@@ -251,7 +252,8 @@ export class TenantService {
       .where(
         or(
           eq(tenants.status, 'active'),
-          eq(tenants.status, 'provisioning')
+          eq(tenants.status, 'provisioning'),
+          eq(tenants.status, 'error')
         )
       )
       .orderBy(tenants.createdAt);

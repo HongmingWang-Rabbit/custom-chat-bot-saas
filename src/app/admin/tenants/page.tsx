@@ -125,7 +125,8 @@ function OrganizationCard({ tenant }: { tenant: Tenant }) {
     provisioning: 'bg-blue-100 text-blue-700',
     suspended: 'bg-yellow-100 text-yellow-700',
     pending: 'bg-blue-100 text-blue-700',
-    deleted: 'bg-red-100 text-red-700',
+    error: 'bg-red-100 text-red-700',
+    deleted: 'bg-gray-100 text-gray-700',
   };
 
   return (
