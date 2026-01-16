@@ -442,7 +442,7 @@ async function seed() {
         doc_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
         company_slug VARCHAR(100) NOT NULL,
         content TEXT NOT NULL,
-        embedding vector(1536),
+        embedding vector(3072),
         chunk_index INTEGER NOT NULL,
         start_char INTEGER,
         end_char INTEGER,
