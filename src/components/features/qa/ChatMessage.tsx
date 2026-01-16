@@ -40,7 +40,10 @@ export function ChatMessage({
   const isUser = role === 'user';
 
   return (
-    <div className={`flex gap-4 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+    <div
+      className={`flex gap-4 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+      data-testid={isUser ? 'chat-message-user' : 'chat-message-assistant'}
+    >
       {/* Avatar */}
       <div
         className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-sm font-semibold ${
@@ -110,6 +113,7 @@ export function ChatMessage({
                 <div
                   key={citation.id || idx}
                   className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100"
+                  data-testid="chat-citation"
                 >
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-blue-50 rounded-lg">

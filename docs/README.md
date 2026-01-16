@@ -72,6 +72,7 @@ docs/
 | ORM | Drizzle ORM |
 | Main Database | PostgreSQL |
 | Tenant Databases | PostgreSQL + pgvector |
+| Caching | Redis (optional, for RAG response caching) |
 | Encryption | AES-256-GCM |
 | LLM | OpenAI GPT-4o (adapter pattern) |
 | Embeddings | text-embedding-3-small (1536d) |
@@ -97,6 +98,10 @@ OPENAI_API_KEY=sk-...
 
 # Logging
 LOG_LEVEL=info
+
+# Caching (optional)
+REDIS_URL=redis://localhost:6379
+RAG_CACHE_TTL_SECONDS=3600
 ```
 
 ---

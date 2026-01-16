@@ -295,6 +295,7 @@ export default function ReviewPage() {
             <select
               value={filterFlagged}
               onChange={(e) => setFilterFlagged(e.target.value as 'all' | 'true' | 'false')}
+              data-testid="filter-flagged"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
             >
               <option value="all">All</option>
@@ -307,6 +308,7 @@ export default function ReviewPage() {
             <select
               value={filterReviewed}
               onChange={(e) => setFilterReviewed(e.target.value as 'all' | 'true' | 'false')}
+              data-testid="filter-reviewed"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 bg-white"
             >
               <option value="all">All</option>

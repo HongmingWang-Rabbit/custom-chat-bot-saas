@@ -84,9 +84,10 @@ npx tsx scripts/update-document-urls.ts  # Update document URLs in DB
 |------|---------|
 | `src/lib/services/tenant-service.ts` | Tenant CRUD, credential encryption/decryption, connection pooling, hard delete |
 | `src/lib/services/storage-service.ts` | Supabase Storage upload/download, signed URLs |
-| `src/lib/rag/service.ts` | RAG pipeline orchestration: retrieve → rerank → prompt → generate (handles greetings) |
+| `src/lib/rag/service.ts` | RAG pipeline orchestration: retrieve → rerank → prompt → generate (with caching) |
 | `src/lib/rag/retrieval.ts` | pgvector similarity search (default threshold: 0.25) |
 | `src/lib/rag/citations.ts` | Parse [Citation N] references from LLM response |
+| `src/lib/cache/` | Redis-based RAG response caching (per-tenant, 1hr TTL) |
 | `src/lib/llm/adapter.ts` | Abstract LLM interface for provider switching |
 | `src/lib/llm/openai-adapter.ts` | OpenAI implementation |
 | `src/lib/llm/analysis-prompts.ts` | LLM prompts for Q&A log analysis |
@@ -101,6 +102,11 @@ npx tsx scripts/update-document-urls.ts  # Update document URLs in DB
 POST /api/qa
     │
     ▼
+┌─────────────────┐     ┌─────────────────┐
+│ Check cache     │────►│ Return cached   │ (if hit)
+└────────┬────────┘     └─────────────────┘
+         │ (miss)
+         ▼
 ┌─────────────────┐
 │ Embed question  │ (OpenAI text-embedding-3-small)
 └────────┬────────┘
@@ -122,7 +128,11 @@ POST /api/qa
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ Log to qa_logs  │
+│ Cache response  │ (Redis, per-tenant, 1hr TTL)
+└────────┬────────┘
+         ▼
+┌─────────────────┐
+│ Log to qa_logs  │ (includes cacheHit flag)
 └─────────────────┘
 ```
 
@@ -156,6 +166,10 @@ Required:
 - `OPENAI_API_KEY` - For embeddings and LLM
 - `SUPABASE_ACCESS_TOKEN` - Management API for tenant provisioning
 - `SUPABASE_ORG_ID` - Organization for new tenant projects
+
+Optional (Caching):
+- `REDIS_URL` - Redis connection string (enables RAG response caching)
+- `RAG_CACHE_TTL_SECONDS` - Cache TTL in seconds (default: 3600)
 
 ## Testing Structure
 

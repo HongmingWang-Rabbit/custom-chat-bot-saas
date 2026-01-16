@@ -210,4 +210,6 @@ export interface DebugInfo {
   chunksRetrieved?: number;
   promptTokens?: number;
   completionTokens?: number;
+  /** Whether response was served from cache */
+  cacheHit?: boolean;
 }

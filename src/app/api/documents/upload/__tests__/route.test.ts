@@ -57,14 +57,24 @@ vi.mock('@/lib/rag', () => ({
 }));
 
 // Mock logger
+const mockChildLogger = {
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
+  child: vi.fn(() => mockChildLogger),
+};
+
 vi.mock('@/lib/logger', () => ({
-  createRequestContext: () => ({ traceId: 'test-trace-id' }),
-  createLayerLogger: () => ({
+  logger: {
+    child: vi.fn(() => mockChildLogger),
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
-  }),
+  },
+  createRequestContext: () => ({ traceId: 'test-trace-id' }),
+  createLayerLogger: () => mockChildLogger,
   logDbOperation: vi.fn(),
   logExternalCall: vi.fn(),
   logRagStep: vi.fn(),
@@ -83,6 +93,13 @@ vi.mock('@/lib/logger', () => ({
     }
   },
   truncateText: (text: string) => text,
+}));
+
+// Mock cache service
+vi.mock('@/lib/cache', () => ({
+  getRAGCacheService: () => ({
+    invalidateTenant: vi.fn().mockResolvedValue(0),
+  }),
 }));
 
 // =============================================================================

@@ -13,6 +13,7 @@ import { RAGConfig } from '@/db/schema/main';
 import { qaLogs, NewQALog } from '@/db/schema/tenant';
 import { createLLMAdapterFromConfig, LLMAdapter, buildRAGSystemPrompt, buildRAGUserPrompt } from '@/lib/llm';
 import { logger } from '@/lib/logger';
+import { getRAGCacheService, RAGCacheService } from '@/lib/cache';
 import { retrieveWithConfig, RetrievedChunk, rerankChunks } from './retrieval';
 import {
   buildCitationContext,
@@ -66,6 +67,7 @@ export class RAGService {
   private ragConfig: RAGConfig;
   private tenantSlug: string;
   private llmApiKey: string | null;
+  private cacheService: RAGCacheService;
 
   constructor(
     db: TenantDatabase,
@@ -83,6 +85,7 @@ export class RAGService {
       chunkOverlap: ragConfig.chunkOverlap ?? 50,
     };
     this.tenantSlug = tenantSlug;
+    this.cacheService = getRAGCacheService();
   }
 
   /**
@@ -116,7 +119,28 @@ export class RAGService {
       return response;
     }
 
-    // 1. Retrieve relevant chunks
+    // 1. Check cache for existing response
+    const cached = await this.cacheService.get(request.tenantSlug, request.query);
+    if (cached) {
+      log.info(
+        { tenant: request.tenantSlug, event: 'cache_hit' },
+        'Returning cached RAG response'
+      );
+      // Log cache hit for analytics
+      await this.logInteraction({
+        query: request.query,
+        answer: cached.answer,
+        confidence: cached.confidence,
+        retrievedChunks: [],
+        citations: [],
+        sessionId: request.sessionId,
+        duration: Date.now() - startTime,
+        cacheHit: true,
+      });
+      return cached;
+    }
+
+    // 2. Retrieve relevant chunks
     const retrieval = await retrieveWithConfig(
       this.db,
       request.query,
@@ -124,7 +148,7 @@ export class RAGService {
       this.ragConfig
     );
 
-    // 2. Check if we have relevant content
+    // 3. Check if we have relevant content
     if (retrieval.chunks.length === 0) {
       const response = this.createNoContextResponse(request.query, retrieval.queryEmbeddingTokens);
       // Log queries with no context found
@@ -140,13 +164,13 @@ export class RAGService {
       return response;
     }
 
-    // 3. Rerank chunks for better relevance
+    // 4. Rerank chunks for better relevance
     const rankedChunks = rerankChunks(retrieval.chunks, request.query);
 
-    // 4. Build citation context
+    // 5. Build citation context
     const citationContext = buildCitationContext(rankedChunks);
 
-    // 5. Convert to prompt format
+    // 6. Convert to prompt format
     const contexts = rankedChunks.map((chunk) => ({
       chunkId: chunk.id,
       docId: chunk.document.id,
@@ -156,7 +180,7 @@ export class RAGService {
       score: chunk.similarity,
     }));
 
-    // 6. Generate response with LLM
+    // 7. Generate response with LLM
     const systemPrompt = buildRAGSystemPrompt();
     const userPrompt = buildRAGUserPrompt(request.query, contexts);
 
@@ -171,11 +195,11 @@ export class RAGService {
       }
     );
 
-    // 7. Parse citations from response
+    // 8. Parse citations from response
     const citedResponse = parseCitations(llmResponse.content, citationContext);
     const overallConfidence = calculateOverallConfidence(citedResponse.citations);
 
-    // 8. Log the Q&A interaction
+    // 9. Log the Q&A interaction
     await this.logInteraction({
       query: request.query,
       answer: citedResponse.text,
@@ -186,7 +210,7 @@ export class RAGService {
       duration: Date.now() - startTime,
     });
 
-    return {
+    const response: RAGResponse = {
       answer: citedResponse.text,
       citations: citedResponse.citations,
       confidence: overallConfidence,
@@ -196,6 +220,11 @@ export class RAGService {
         completion: llmResponse.usage.totalTokens,
       },
     };
+
+    // 10. Cache the response for future queries
+    await this.cacheService.set(request.tenantSlug, request.query, response);
+
+    return response;
   }
 
   /**
@@ -227,7 +256,32 @@ export class RAGService {
         return;
       }
 
-      // 1. Retrieve relevant chunks
+      // 1. Check cache for existing response
+      const cached = await this.cacheService.get(request.tenantSlug, request.query);
+      if (cached) {
+        log.info(
+          { tenant: request.tenantSlug, event: 'cache_hit_stream' },
+          'Returning cached RAG response (streaming)'
+        );
+        // Emit cached answer as a single chunk
+        callbacks.onChunk?.(cached.answer);
+        callbacks.onCitations?.(cached.citations);
+        // Log cache hit for analytics
+        await this.logInteraction({
+          query: request.query,
+          answer: cached.answer,
+          confidence: cached.confidence,
+          retrievedChunks: [],
+          citations: [],
+          sessionId: request.sessionId,
+          duration: Date.now() - startTime,
+          cacheHit: true,
+        });
+        callbacks.onComplete?.(cached);
+        return;
+      }
+
+      // 2. Retrieve relevant chunks
       const retrieval = await retrieveWithConfig(
         this.db,
         request.query,
@@ -235,7 +289,7 @@ export class RAGService {
         this.ragConfig
       );
 
-      // 2. Check if we have relevant content
+      // 3. Check if we have relevant content
       if (retrieval.chunks.length === 0) {
         const noContextResponse = this.createNoContextResponse(
           request.query,
@@ -256,11 +310,11 @@ export class RAGService {
         return;
       }
 
-      // 3. Rerank and build context
+      // 4. Rerank and build context
       const rankedChunks = rerankChunks(retrieval.chunks, request.query);
       const citationContext = buildCitationContext(rankedChunks);
 
-      // 4. Convert to prompt format
+      // 5. Convert to prompt format
       const contexts = rankedChunks.map((chunk) => ({
         chunkId: chunk.id,
         docId: chunk.document.id,
@@ -270,7 +324,7 @@ export class RAGService {
         score: chunk.similarity,
       }));
 
-      // 5. Stream response from LLM
+      // 6. Stream response from LLM
       const systemPrompt = buildRAGSystemPrompt();
       const userPrompt = buildRAGUserPrompt(request.query, contexts);
 
@@ -297,14 +351,14 @@ export class RAGService {
         }
       }
 
-      // 6. Parse citations after streaming completes
+      // 7. Parse citations after streaming completes
       const citedResponse = parseCitations(fullResponse, citationContext);
       const overallConfidence = calculateOverallConfidence(citedResponse.citations);
 
       // Send citations
       callbacks.onCitations?.(citedResponse.citations);
 
-      // 7. Log interaction
+      // 8. Log interaction
       await this.logInteraction({
         query: request.query,
         answer: fullResponse,
@@ -315,8 +369,8 @@ export class RAGService {
         duration: Date.now() - startTime,
       });
 
-      // 8. Complete callback
-      callbacks.onComplete?.({
+      // Build response for caching and callback
+      const response: RAGResponse = {
         answer: fullResponse,
         citations: citedResponse.citations,
         confidence: overallConfidence,
@@ -325,7 +379,13 @@ export class RAGService {
           embedding: retrieval.queryEmbeddingTokens,
           completion: completionTokens,
         },
-      });
+      };
+
+      // 9. Cache the response for future queries
+      await this.cacheService.set(request.tenantSlug, request.query, response);
+
+      // 10. Complete callback
+      callbacks.onComplete?.(response);
     } catch (error) {
       callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));
     }
@@ -384,6 +444,7 @@ Try asking about financial performance, risk factors, company strategy, or any o
     citations: Citation[];
     sessionId?: string;
     duration: number;
+    cacheHit?: boolean;
   }): Promise<void> {
     try {
       // Convert to schema Citation format
@@ -406,6 +467,7 @@ Try asking about financial performance, risk factors, company strategy, or any o
         debugInfo: {
           totalMs: params.duration,
           chunksRetrieved: params.retrievedChunks.length,
+          cacheHit: params.cacheHit,
         },
       };
 

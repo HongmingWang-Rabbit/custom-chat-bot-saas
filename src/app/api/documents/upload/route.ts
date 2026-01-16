@@ -39,6 +39,7 @@ import {
   truncateText,
 } from '@/lib/logger';
 import { StorageService, StorageUploadResult } from '@/lib/services/storage-service';
+import { getRAGCacheService } from '@/lib/cache';
 
 // =============================================================================
 // POST Handler - Upload File
@@ -315,6 +316,24 @@ export async function POST(request: NextRequest) {
       .from(documents)
       .where(eq(documents.id, doc.id))
       .limit(1);
+
+    // Invalidate RAG cache for this tenant (new documents may change Q&A results)
+    try {
+      const cacheService = getRAGCacheService();
+      const invalidated = await cacheService.invalidateTenant(tenantSlug);
+      if (invalidated > 0) {
+        log.info(
+          { event: 'cache_invalidated', tenant: tenantSlug, keysDeleted: invalidated },
+          `Invalidated ${invalidated} cached RAG responses`
+        );
+      }
+    } catch (cacheError) {
+      // Don't fail upload if cache invalidation fails
+      log.warn(
+        { event: 'cache_invalidation_error', error: cacheError instanceof Error ? cacheError.message : String(cacheError) },
+        'Failed to invalidate RAG cache'
+      );
+    }
 
     log.info(
       {

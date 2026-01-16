@@ -545,6 +545,112 @@ if (!hasSufficientContext(scores, config.confidenceThreshold) || contexts.length
 
 ## 7. Performance Optimization
 
+### Redis Response Caching
+
+Full RAG responses are cached in Redis to reduce LLM API costs and improve latency for repeated questions.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          Cache Flow                                      │
+│                                                                         │
+│  ┌─────────┐    ┌─────────────┐    ┌─────────────────────────────────┐  │
+│  │ Question│───►│ Normalize & │───►│ Check Redis                     │  │
+│  │         │    │ Hash (SHA)  │    │ Key: rag:qa:{tenant}:{hash}     │  │
+│  └─────────┘    └─────────────┘    └───────────────┬─────────────────┘  │
+│                                                    │                     │
+│                                    ┌───────────────┼─────────────────┐   │
+│                                    │ HIT           │           MISS │   │
+│                                    ▼               │               ▼   │
+│                          ┌─────────────────┐      │     ┌─────────────┐│
+│                          │ Return cached   │      │     │ Run full    ││
+│                          │ response        │      │     │ RAG pipeline││
+│                          └─────────────────┘      │     └──────┬──────┘│
+│                                                   │            │       │
+│                                                   │            ▼       │
+│                                                   │     ┌─────────────┐│
+│                                                   │     │ Cache result││
+│                                                   │     │ (TTL: 1hr)  ││
+│                                                   │     └─────────────┘│
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Generation:**
+```typescript
+// src/lib/cache/cache-key.ts
+
+// Normalize question for cache hits on equivalent queries
+export function normalizeQuestion(question: string): string {
+  return question
+    .toLowerCase()
+    .replace(/[?!.]+$/g, '')   // Remove trailing punctuation
+    .replace(/\s+/g, ' ')       // Collapse whitespace
+    .trim();
+}
+
+// Generate deterministic cache key
+export function generateCacheKey(tenantSlug: string, question: string): string {
+  const normalized = normalizeQuestion(question);
+  const hash = crypto.createHash('sha256')
+    .update(normalized)
+    .digest('hex')
+    .slice(0, HASH_LENGTH);
+  return `${DEFAULT_KEY_PREFIX}${tenantSlug}:${hash}`;
+}
+```
+
+**Cache Service:**
+```typescript
+// src/lib/cache/rag-cache.ts
+
+export class RAGCacheService {
+  // Get cached response (returns null if miss)
+  async get(tenantSlug: string, question: string): Promise<RAGResponse | null>
+
+  // Cache a response
+  async set(tenantSlug: string, question: string, response: RAGResponse): Promise<void>
+
+  // Invalidate all cache for a tenant (on document upload/delete)
+  async invalidateTenant(tenantSlug: string): Promise<number>
+}
+```
+
+**Cache Invalidation Triggers:**
+
+| Event | Action |
+|-------|--------|
+| Document uploaded | `invalidateTenant(tenantSlug)` |
+| Document deleted | `invalidateTenant(tenantSlug)` |
+| TTL expires | Automatic by Redis |
+
+**Environment Variables:**
+```env
+REDIS_URL=redis://localhost:6379      # Connection string
+RAG_CACHE_TTL_SECONDS=3600            # TTL (default: 1 hour)
+```
+
+**Graceful Degradation:**
+- If Redis is not configured (`REDIS_URL` not set), caching is disabled
+- If Redis connection fails, requests proceed without caching
+- Cache version is stored with responses; stale versions are ignored
+
+### Cache Analytics
+
+Cache hits are tracked in `qa_logs.debug_info.cacheHit`:
+
+```typescript
+// src/db/schema/tenant.ts
+export interface DebugInfo {
+  retrievalMs?: number;
+  llmMs?: number;
+  totalMs?: number;
+  model?: string;
+  chunksRetrieved?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  cacheHit?: boolean;  // Whether response was served from cache
+}
+```
+
 ### Embedding Cache (Future)
 
 ```typescript

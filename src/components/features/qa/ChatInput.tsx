@@ -66,12 +66,14 @@ export function ChatInput({
           placeholder={placeholder}
           disabled={disabled}
           rows={1}
+          data-testid="chat-input"
           className="flex-1 resize-none bg-transparent border-none outline-none px-1 py-1 text-sm text-gray-700 placeholder:text-gray-400 disabled:opacity-50"
         />
 
         <button
           type="submit"
           disabled={disabled || !value.trim()}
+          data-testid="chat-submit"
           className="flex-shrink-0 p-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow"
           aria-label="Send message"
         >
@@ -89,7 +91,7 @@ export function ChatInput({
       {/* Loading overlay */}
       {disabled && (
         <div className="absolute inset-0 flex items-center justify-center bg-white/80 rounded-xl backdrop-blur-sm">
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="flex items-center gap-2 text-sm text-gray-500" data-testid="chat-loading">
             <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle
                 className="opacity-25"
