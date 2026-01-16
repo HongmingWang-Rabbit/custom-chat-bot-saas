@@ -180,24 +180,24 @@ async function storageApi<T>(
 // =============================================================================
 
 /** Maximum retries for storage bucket creation */
-const STORAGE_MAX_RETRIES = 10;
+const STORAGE_MAX_RETRIES = 15;
 
-/** Initial delay between retries (ms) */
-const STORAGE_INITIAL_DELAY = 3000;
+/** Initial delay between retries (ms) - starts at 5s, increases per attempt */
+const STORAGE_INITIAL_DELAY = 5000;
 
 /**
- * Create a storage bucket for a tenant's project using the Management API.
- * Uses SUPABASE_ACCESS_TOKEN to bypass RLS issues on newly created projects.
+ * Create a storage bucket for a tenant's project using the Storage API.
+ * Uses service_role key for authentication.
  * Includes retry logic since storage service may not be ready immediately after project creation.
  *
  * @param projectRef - Supabase project reference (e.g., 'jdxhoqdnxshzbjasfhfz')
- * @param _serviceKey - Service role key (unused, kept for API compatibility)
+ * @param serviceKey - Service role key for the project
  * @param config - Bucket configuration options
  * @returns Bucket creation result
  */
 export async function createStorageBucket(
   projectRef: string,
-  _serviceKey?: string,
+  serviceKey?: string,
   config: Partial<StorageBucketConfig> = {}
 ): Promise<StorageBucketResult> {
   const bucketName = config.bucketName ?? DEFAULT_BUCKET_NAME;
@@ -205,15 +205,27 @@ export async function createStorageBucket(
   const fileSizeLimit = config.fileSizeLimit ?? MAX_FILE_SIZE;
   const allowedMimeTypes = config.allowedMimeTypes ?? ALLOWED_MIME_TYPES;
 
+  // If no service key provided, skip bucket creation
+  if (!serviceKey) {
+    console.log(`[Storage] No service key provided, skipping bucket creation for ${projectRef}`);
+    return {
+      bucketId: bucketName,
+      bucketName: bucketName,
+      isPublic: isPublic,
+    };
+  }
+
   console.log(`[Storage] Creating bucket '${bucketName}' for project ${projectRef}`);
 
   // Retry logic for storage service initialization
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= STORAGE_MAX_RETRIES; attempt++) {
     try {
-      // Use Management API to create bucket (bypasses RLS)
-      const bucket = await managementApi<SupabaseBucketResponse>(
-        `/projects/${projectRef}/storage/buckets`,
+      // Use Storage API with service_role key
+      const bucket = await storageApi<SupabaseBucketResponse>(
+        projectRef,
+        serviceKey,
+        '/bucket',
         {
           method: 'POST',
           body: JSON.stringify({
@@ -245,12 +257,15 @@ export async function createStorageBucket(
 
       lastError = error instanceof Error ? error : new Error(String(error));
 
-      // Check if this is a "tenant config not ready" error - retry with delay
-      const isTenantNotReady = lastError.message.includes('Missing tenant config') ||
-                               lastError.message.includes('tenant not found') ||
-                               lastError.message.includes('not initialized');
+      // Check if this is a transient error that may resolve with time
+      const isTransientError =
+        lastError.message.includes('Missing tenant config') ||
+        lastError.message.includes('tenant not found') ||
+        lastError.message.includes('not initialized') ||
+        lastError.message.includes('row-level security policy') ||
+        lastError.message.includes('violates row-level security');
 
-      if (isTenantNotReady && attempt < STORAGE_MAX_RETRIES) {
+      if (isTransientError && attempt < STORAGE_MAX_RETRIES) {
         const delay = STORAGE_INITIAL_DELAY * attempt;
         console.log(`[Storage] Storage service not ready (attempt ${attempt}/${STORAGE_MAX_RETRIES}), retrying in ${delay}ms...`);
         await new Promise(resolve => setTimeout(resolve, delay));
