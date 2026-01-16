@@ -204,11 +204,11 @@ function CreateTenantModal({
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
-    setProvisioningStatus('Creating Supabase project...');
+    setProvisioningStatus('Creating tenant record...');
 
     try {
-      // Use auto-provisioning endpoint
-      const response = await fetch('/api/tenants/provision', {
+      // Step 1: Create tenant record
+      const createResponse = await fetch('/api/tenants/provision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -217,17 +217,49 @@ function CreateTenantModal({
         }),
       });
 
-      if (!response.ok) {
-        const data = await response.json();
+      if (!createResponse.ok) {
+        const data = await createResponse.json();
         throw new Error(data.error || 'Failed to create organization');
       }
 
-      setProvisioningStatus('Setting up database and storage...');
+      // Step 2: Poll continue endpoint until complete
+      setProvisioningStatus('Creating Supabase project (this may take 1-3 minutes)...');
 
-      // Small delay to show completion
-      await new Promise(resolve => setTimeout(resolve, 500));
+      let attempts = 0;
+      const maxAttempts = 60; // 5 minutes max (5s intervals)
 
-      onCreated();
+      while (attempts < maxAttempts) {
+        const continueResponse = await fetch(`/api/tenants/${formData.slug}/continue`, {
+          method: 'POST',
+        });
+
+        const result = await continueResponse.json();
+
+        if (result.status === 'active') {
+          setProvisioningStatus('Provisioning complete!');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          onCreated();
+          return;
+        }
+
+        if (result.status === 'error') {
+          throw new Error(result.error || 'Provisioning failed');
+        }
+
+        // Update status based on step
+        if (result.step === 'project_created') {
+          setProvisioningStatus('Running database migrations...');
+        } else if (result.status === 'project_ready') {
+          setProvisioningStatus('Project ready, running migrations...');
+        }
+
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        attempts++;
+      }
+
+      throw new Error('Provisioning timed out. Please check the tenant status.');
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
       setProvisioningStatus(null);

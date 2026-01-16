@@ -407,6 +407,66 @@ export class TenantService {
     log.error({ event: 'provisioning_failed', slug, error: errorMessage }, 'Provisioning failed');
   }
 
+  /**
+   * Update tenant status only.
+   */
+  async updateTenantStatusOnly(slug: string, status: TenantStatus): Promise<void> {
+    await this.mainDb
+      .update(tenants)
+      .set({
+        status,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenants.slug, slug));
+
+    log.debug({ event: 'status_updated', slug, status }, 'Tenant status updated');
+  }
+
+  /**
+   * Get provisioning state (password) for a tenant.
+   */
+  async getProvisioningState(slug: string): Promise<{ dbPassword: string } | null> {
+    const tenant = await this.getTenantAnyStatus(slug);
+    if (!tenant || !tenant.encryptedDbPassword) {
+      return null;
+    }
+
+    try {
+      return {
+        dbPassword: decrypt(tenant.encryptedDbPassword),
+      };
+    } catch (error) {
+      log.error({ event: 'decrypt_password_error', slug }, 'Failed to decrypt provisioning password');
+      return null;
+    }
+  }
+
+  /**
+   * Update tenant with provisioning credentials (after Supabase project is ready).
+   */
+  async updateProvisioningCredentials(
+    slug: string,
+    credentials: {
+      databaseUrl: string;
+      serviceKey: string;
+      anonKey: string;
+      databaseHost: string;
+    }
+  ): Promise<void> {
+    await this.mainDb
+      .update(tenants)
+      .set({
+        encryptedDatabaseUrl: encrypt(credentials.databaseUrl),
+        encryptedServiceKey: encrypt(credentials.serviceKey),
+        encryptedAnonKey: encrypt(credentials.anonKey),
+        databaseHost: credentials.databaseHost,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenants.slug, slug));
+
+    log.info({ event: 'credentials_updated', slug }, 'Provisioning credentials stored');
+  }
+
   // ===========================================================================
   // Write Operations
   // ===========================================================================
