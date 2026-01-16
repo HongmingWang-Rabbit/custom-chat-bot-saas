@@ -12,6 +12,44 @@ A production-ready multi-tenant SaaS platform for RAG-powered Q&A on company dis
 - **Security First** - AES-256-GCM encryption, prompt injection defense, input sanitization
 - **Provider Agnostic** - LLM adapter pattern supports easy provider switching
 
+## Design Philosophy
+
+This project balances **production-ready infrastructure** with a **focused, non-agentic RAG pipeline**.
+
+### Production Infrastructure
+
+The infrastructure reflects real-world requirements:
+
+| Concern | Solution |
+|---------|----------|
+| Data isolation | Separate database per tenant (security, compliance) |
+| Credential security | AES-256-GCM encryption (can't store keys in plaintext) |
+| Performance | Connection pooling, Redis caching (cost & latency control) |
+| Observability | Request tracing, structured logging (production debugging) |
+| Reliability | Proper error handling, graceful fallbacks |
+
+### Simple RAG Pipeline
+
+The LLM interaction is intentionally straightforward - no agents, no autonomous loops:
+
+```
+User Question
+    ↓
+Embed (single API call)
+    ↓
+Vector Search (deterministic)
+    ↓
+Rerank (term matching, no LLM)
+    ↓
+Generate Answer (single LLM call)
+    ↓
+Parse Citations (deterministic)
+    ↓
+Return Response
+```
+
+This keeps the AI behavior predictable and auditable while the infrastructure handles production concerns like multi-tenancy, caching, and security.
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -188,6 +226,17 @@ Detailed documentation is available in the `docs/` folder:
 - [RAG Pipeline](./docs/architecture/06-rag-pipeline.md)
 - [Component Design](./docs/architecture/07-component-design.md)
 - [Deployment Guide](./docs/architecture/08-deployment-guide.md)
+
+## Future Improvements
+
+With more time, potential enhancements include:
+
+- **Hybrid search** - Combine vector similarity with BM25 keyword search
+- **Cross-encoder reranking** - Use a model like `cross-encoder/ms-marco-MiniLM` for better relevance
+- **Chunk overlap tuning** - Experiment with different chunking strategies per document type
+- **Answer confidence calibration** - Train a classifier on flagged responses to improve confidence scores
+- **Rate limiting** - Add per-tenant rate limits for API protection
+- **Webhook notifications** - Alert admins when low-confidence answers are generated
 
 ## License
 
