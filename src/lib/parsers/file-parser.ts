@@ -9,29 +9,7 @@
  */
 
 import mammoth from 'mammoth';
-
-// pdf-parse v2.x has a class-based API
-// Use dynamic import to avoid type definition issues
-interface PDFParserInstance {
-  load(): Promise<void>;
-  getText(): Promise<string>;
-  destroy(): void;
-}
-
-interface PDFParseConstructor {
-  new (options: { data: Buffer }): PDFParserInstance;
-}
-
-let PDFParseClass: PDFParseConstructor | null = null;
-
-async function getPDFParser(): Promise<PDFParseConstructor> {
-  if (!PDFParseClass) {
-    const mod = await import('pdf-parse');
-    // Cast through unknown to avoid private property type conflicts
-    PDFParseClass = (mod as unknown as { PDFParse: PDFParseConstructor }).PDFParse;
-  }
-  return PDFParseClass;
-}
+import { extractText } from 'unpdf';
 
 // =============================================================================
 // Types
@@ -99,19 +77,28 @@ export function getMimeType(filename: string): SupportedMimeType | null {
 
 /**
  * Parse PDF file and extract text.
+ * Uses unpdf which works in all JavaScript runtimes including serverless.
  */
 async function parsePDF(buffer: Buffer): Promise<ParseResult> {
-  const PDFParse = await getPDFParser();
-  const parser = new PDFParse({ data: buffer });
-  await parser.load();
+  // unpdf requires Uint8Array, not Buffer
+  const uint8Array = new Uint8Array(buffer);
 
-  const result = await parser.getText();
-  parser.destroy();
+  let pages: string[];
+  let totalPages: number;
 
-  // getText() returns { pages, text, total }
-  const rawText = typeof result === 'string' ? result : (result as { text: string }).text || '';
+  try {
+    const result = await extractText(uint8Array);
+    pages = result.text;
+    totalPages = result.totalPages;
+  } catch (err) {
+    // Convert unpdf errors to more user-friendly messages
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    throw new Error(`Invalid PDF: ${message}`);
+  }
 
-  const content = rawText
+  // unpdf returns an array of strings (one per page), join them
+  const content = pages
+    .join('\n\n')
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/-- \d+ of \d+ --/g, '') // Remove page markers
@@ -120,6 +107,7 @@ async function parsePDF(buffer: Buffer): Promise<ParseResult> {
   return {
     content,
     metadata: {
+      pageCount: totalPages,
       wordCount: content.split(/\s+/).filter(Boolean).length,
       charCount: content.length,
     },
