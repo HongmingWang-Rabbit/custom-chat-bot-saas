@@ -438,8 +438,10 @@ async function seed() {
       ALTER TABLE documents ALTER COLUMN mime_type SET DEFAULT 'application/octet-stream'
     `).catch(() => {});
 
+    // Drop and recreate document_chunks to ensure correct vector dimensions
+    await db.execute(sql`DROP TABLE IF EXISTS document_chunks CASCADE`);
     await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS document_chunks (
+      CREATE TABLE document_chunks (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         doc_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
         company_slug VARCHAR(100) NOT NULL,
@@ -453,7 +455,7 @@ async function seed() {
         created_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
-    console.log('  ✓ document_chunks table created');
+    console.log('  ✓ document_chunks table created (vector dimension: 3072)');
 
     // Create vector index
     await db.execute(sql`
