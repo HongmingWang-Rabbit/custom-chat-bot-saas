@@ -363,8 +363,9 @@ describe('sanitizeForLogging', () => {
 describe('Timer', () => {
   it('should track elapsed time', async () => {
     const timer = new Timer();
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(timer.elapsed()).toBeGreaterThanOrEqual(10);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Use a lower threshold to account for CI timer resolution variance
+    expect(timer.elapsed()).toBeGreaterThanOrEqual(40);
   });
 
   it('should mark and measure operations', () => {
