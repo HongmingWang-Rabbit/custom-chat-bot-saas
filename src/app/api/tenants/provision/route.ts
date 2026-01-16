@@ -177,61 +177,57 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    // Step 1: Provision Supabase project (includes storage bucket with CDN)
-    timer.mark('supabase_provision');
-    log.info({ event: 'supabase_provisioning' }, 'Creating Supabase project...');
-
-    const credentials = await provisionSupabaseProject(body.slug, { region: body.region });
-    timer.measure('supabase_provision');
-
-    log.info(
-      {
-        event: 'supabase_provisioned',
-        projectRef: credentials.projectRef,
-        storageBucket: credentials.storageBucketName,
-        duration_ms: timer.getDuration('supabase_provision'),
-      },
-      `Supabase project created: ${credentials.projectRef}`
-    );
-
-    // Step 2: Create tenant record with "provisioning" status
+    // Step 1: Create provisional tenant record (stores password for recovery)
     timer.mark('tenant_create');
-    log.info({ event: 'tenant_creating' }, 'Creating tenant record...');
+    log.info({ event: 'tenant_creating' }, 'Creating provisional tenant record...');
 
-    const tenant = await tenantService.createTenant({
-      slug: body.slug,
-      name: body.name,
-      databaseUrl: credentials.databaseUrl,
-      serviceKey: credentials.serviceKey,
-      anonKey: credentials.anonKey,
-      llmApiKey: body.llmApiKey,
-      branding: body.branding as Partial<TenantBranding>,
-      ragConfig: body.ragConfig as Partial<RAGConfig>,
-      status: 'provisioning', // Will be updated to 'active' after migrations
-      supabaseProjectRef: credentials.projectRef,
-    });
+    const { dbPassword, isRecovery, projectRef: existingProjectRef } =
+      await tenantService.getOrCreateProvisioningState(
+        body.slug,
+        body.name,
+        () => {
+          // Import and use generateSecurePassword
+          const crypto = require('crypto');
+          const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+          const randomBytes = crypto.randomBytes(32);
+          let password = '';
+          for (let i = 0; i < 32; i++) {
+            password += chars[randomBytes[i] % chars.length];
+          }
+          return password;
+        }
+      );
     timer.measure('tenant_create');
 
-    logAdminAction(log, 'provision_tenant', {
-      target: `${body.slug} (${credentials.projectRef})`,
-    });
+    // Get the created tenant record
+    const tenant = await tenantService.getTenantAnyStatus(body.slug);
+    if (!tenant) {
+      throw new Error('Failed to create provisional tenant record');
+    }
+
+    logAdminAction(log, 'provision_tenant', { target: body.slug });
 
     log.info(
       {
         event: 'tenant_created',
         tenantId: tenant.id,
         slug: tenant.slug,
-        projectRef: credentials.projectRef,
+        isRecovery,
         total_ms: timer.elapsed(),
       },
-      `Tenant created, starting background migrations: ${tenant.slug}`
+      `Provisional tenant created, starting background provisioning: ${tenant.slug}`
     );
 
-    // Step 3: Run migrations in background (don't await)
-    // Use pooler URL - direct DB DNS may not propagate for a while
-    runMigrationsInBackground(
+    // Step 2: Run entire provisioning in background (don't await)
+    // This includes: create Supabase project, wait for ready, get keys, create bucket, run migrations
+    runProvisioningInBackground(
       tenant.slug,
-      credentials.databaseUrl,
+      body.region,
+      body.llmApiKey,
+      body.branding as Partial<TenantBranding>,
+      body.ragConfig as Partial<RAGConfig>,
+      dbPassword,
+      isRecovery ? existingProjectRef : null,
       tenantService,
       ctx.traceId
     );
@@ -246,20 +242,15 @@ export async function POST(request: NextRequest) {
           status: 'provisioning',
           createdAt: tenant.createdAt,
         },
-        supabase: {
-          projectRef: credentials.projectRef,
-          apiUrl: credentials.apiUrl,
-          storageBucket: credentials.storageBucketName,
-          region: body.region || 'us-east-1',
-        },
         features: {
           database: true,
           storage: true,
           cdn: true, // Supabase Storage includes Cloudflare CDN
         },
-        message: 'Tenant created. Database migrations running in background. Poll GET /api/tenants/{slug} to check status.',
+        message: 'Tenant created. Supabase project provisioning in background (may take 2-5 minutes). Poll GET /api/tenants/{slug} to check status.',
         debug: {
           traceId: ctx.traceId,
+          isRecovery,
           ...timer.getAllDurations(),
           total_ms: timer.elapsed(),
         },
@@ -311,30 +302,55 @@ export async function POST(request: NextRequest) {
 }
 
 // =============================================================================
-// Background Migration Runner
+// Background Provisioning Runner
 // =============================================================================
 
 /**
- * Run database migrations in the background.
+ * Run entire Supabase provisioning in the background.
+ * This includes: create project, wait for ready, get keys, create bucket, run migrations.
  * Updates tenant status to 'active' on success or 'error' on failure.
  */
-async function runMigrationsInBackground(
+async function runProvisioningInBackground(
   tenantSlug: string,
-  databaseUrl: string,
+  region: string | undefined,
+  llmApiKey: string | undefined,
+  branding: Partial<TenantBranding> | undefined,
+  ragConfig: Partial<RAGConfig> | undefined,
+  dbPassword: string,
+  existingProjectRef: string | null,
   tenantService: ReturnType<typeof getTenantService>,
   traceId: string
 ): Promise<void> {
   const log = logger.child({ layer: 'background', traceId, tenant: tenantSlug });
 
-  log.info({ event: 'background_migrations_start' }, `Starting background migrations for ${tenantSlug}`);
-
-  // Retry configuration for database readiness
-  // Supabase projects can take 3-5 minutes for DNS/database to be fully ready
-  const maxRetries = 60; // Up to 5 minutes total
-  const retryDelay = 5000; // 5 seconds between retries
+  log.info({ event: 'background_provisioning_start', isRecovery: !!existingProjectRef }, `Starting background provisioning for ${tenantSlug}`);
 
   try {
-    // Wait for database to be ready (pooler user setup takes time)
+    // Step 1: Provision Supabase project (this polls for readiness internally)
+    log.info({ event: 'supabase_provisioning' }, 'Creating Supabase project...');
+    const credentials = await provisionSupabaseProject(tenantSlug, {
+      region,
+      dbPassword,
+      existingProjectRef: existingProjectRef ?? undefined,
+      onProjectCreated: async (projectRef) => {
+        // Save project ref immediately for recovery
+        await tenantService.updateProvisioningProjectRef(tenantSlug, projectRef);
+      },
+    });
+
+    log.info(
+      {
+        event: 'supabase_provisioned',
+        projectRef: credentials.projectRef,
+        storageBucket: credentials.storageBucketName,
+      },
+      `Supabase project created: ${credentials.projectRef}`
+    );
+
+    // Step 2: Wait for database to be ready for migrations
+    log.info({ event: 'waiting_for_db' }, 'Waiting for database to be ready...');
+    const maxRetries = 60;
+    const retryDelay = 5000;
     let dbReady = false;
 
     for (let i = 0; i < maxRetries; i++) {
@@ -342,7 +358,7 @@ async function runMigrationsInBackground(
 
       try {
         const postgres = (await import('postgres')).default;
-        const testSql = postgres(databaseUrl, { max: 1, connect_timeout: 10 });
+        const testSql = postgres(credentials.databaseUrl, { max: 1, connect_timeout: 10 });
         await testSql`SELECT 1`;
         await testSql.end();
         dbReady = true;
@@ -361,9 +377,9 @@ async function runMigrationsInBackground(
       throw new Error('Database did not become ready within 5 minutes');
     }
 
-    // Run migrations
+    // Step 3: Run migrations
     log.info({ event: 'migrations_running' }, 'Running database migrations...');
-    const migrationResult = await runTenantMigrations(databaseUrl);
+    const migrationResult = await runTenantMigrations(credentials.databaseUrl);
 
     if (!migrationResult.success) {
       throw new Error(`Migrations failed: ${migrationResult.errors.join(', ')}`);
@@ -374,17 +390,28 @@ async function runMigrationsInBackground(
       'Database migrations completed successfully'
     );
 
-    // Update tenant status to active
-    await tenantService.updateTenantStatus(tenantSlug, 'active');
+    // Step 4: Complete provisioning with credentials
+    log.info({ event: 'completing_provisioning' }, 'Completing provisioning...');
+    await tenantService.completeProvisioning(
+      tenantSlug,
+      {
+        databaseUrl: credentials.databaseUrl,
+        serviceKey: credentials.serviceKey,
+        anonKey: credentials.anonKey,
+        llmApiKey,
+      },
+      branding,
+      ragConfig
+    );
 
-    log.info({ event: 'background_migrations_complete' }, `Tenant ${tenantSlug} is now active`);
+    log.info({ event: 'background_provisioning_complete' }, `Tenant ${tenantSlug} is now active`);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    log.error({ event: 'background_migrations_failed', error: errorMsg }, `Background migrations failed for ${tenantSlug}`);
+    log.error({ event: 'background_provisioning_failed', error: errorMsg }, `Background provisioning failed for ${tenantSlug}`);
 
     // Update tenant status to error
     try {
-      await tenantService.updateTenantStatus(tenantSlug, 'error');
+      await tenantService.failProvisioning(tenantSlug, errorMsg);
     } catch (updateError) {
       log.error({ event: 'status_update_failed' }, 'Failed to update tenant status to error');
     }
