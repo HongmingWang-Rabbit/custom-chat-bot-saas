@@ -2,6 +2,25 @@
 
 A multi-tenant SaaS platform for RAG-powered Q&A on company disclosures. Each tenant gets an isolated database with their documents, embeddings, and Q&A logs.
 
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript |
+| Database | PostgreSQL + pgvector (Supabase) |
+| ORM | Drizzle ORM |
+| Caching | Upstash Redis |
+| LLM | OpenAI GPT-4o |
+| Embeddings | OpenAI text-embedding-3-small (1536d) |
+| Validation | Zod |
+| Document Parsing | pdf-parse, mammoth (DOCX) |
+| Encryption | AES-256-GCM (Node.js crypto) |
+| Logging | Pino |
+| Testing | Vitest, Playwright (E2E) |
+| Styling | Tailwind CSS |
+| Deployment | Vercel + Supabase |
+
 ## How to Run
 
 ### Prerequisites
