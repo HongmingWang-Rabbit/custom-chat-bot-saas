@@ -610,15 +610,21 @@ interface DebugInfo {
 
 ### Logging for Analysis
 
-All Q&A interactions are logged to `qa_logs` table with:
+All Q&A interactions are logged to `qa_logs` table, including:
+- **Greetings** (e.g., "hello", "hi") - logged with confidence 0
+- **No-context queries** - when no relevant chunks found
+- **Normal queries** - with citations and confidence scores
+
+Each log entry contains:
 - Question and answer text
-- Citations used
-- Confidence score
-- Debug metrics
-- Request metadata
+- Citations used (empty array for greetings/no-context)
+- Confidence score (0 for greetings/no-context)
+- Debug metrics (duration, chunks retrieved)
+- Session ID (for conversation tracking)
 
 This enables:
 - Quality analysis over time
 - Identifying problematic questions
 - Model performance tracking
 - Cost estimation
+- Conversation session analysis

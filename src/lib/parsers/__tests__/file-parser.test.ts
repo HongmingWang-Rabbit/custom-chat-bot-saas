@@ -13,9 +13,19 @@ import {
   MAX_FILE_SIZE,
 } from '../file-parser';
 
-// Mock pdf-parse
+// Mock pdf-parse (v2.x class-based API)
+const mockPDFGetText = vi.fn();
+const mockPDFLoad = vi.fn();
+const mockPDFDestroy = vi.fn();
+
+class MockPDFParse {
+  load = mockPDFLoad;
+  getText = mockPDFGetText;
+  destroy = mockPDFDestroy;
+}
+
 vi.mock('pdf-parse', () => ({
-  default: vi.fn(),
+  PDFParse: MockPDFParse,
 }));
 
 // Mock mammoth
@@ -309,33 +319,24 @@ This is a paragraph.
 
   describe('parseFile - PDF', () => {
     beforeEach(() => {
-      vi.resetModules();
+      vi.clearAllMocks();
+      mockPDFLoad.mockResolvedValue(undefined);
     });
 
     it('should parse PDF files and extract text', async () => {
-      const pdf = await import('pdf-parse');
-      const mockPdf = pdf.default as ReturnType<typeof vi.fn>;
-      mockPdf.mockResolvedValue({
-        text: 'This is PDF content.\r\n\r\nSecond paragraph.',
-        numpages: 2,
-      });
+      mockPDFGetText.mockResolvedValue('This is PDF content.\r\n\r\nSecond paragraph.');
 
       const buffer = Buffer.from('fake pdf content');
       const result = await parseFile(buffer, 'document.pdf');
 
       expect(result.content).toContain('This is PDF content');
       expect(result.content).toContain('Second paragraph');
-      expect(result.metadata.pageCount).toBe(2);
       expect(result.metadata.wordCount).toBeGreaterThan(0);
+      expect(mockPDFDestroy).toHaveBeenCalled();
     });
 
     it('should normalize line endings in PDF', async () => {
-      const pdf = await import('pdf-parse');
-      const mockPdf = pdf.default as ReturnType<typeof vi.fn>;
-      mockPdf.mockResolvedValue({
-        text: 'Line1\r\nLine2\r\n\r\n\r\n\r\nLine3',
-        numpages: 1,
-      });
+      mockPDFGetText.mockResolvedValue('Line1\r\nLine2\r\n\r\n\r\n\r\nLine3');
 
       const buffer = Buffer.from('fake pdf');
       const result = await parseFile(buffer, 'doc.pdf');
@@ -346,9 +347,7 @@ This is a paragraph.
     });
 
     it('should handle PDF parsing errors', async () => {
-      const pdf = await import('pdf-parse');
-      const mockPdf = pdf.default as ReturnType<typeof vi.fn>;
-      mockPdf.mockRejectedValue(new Error('Invalid PDF'));
+      mockPDFLoad.mockRejectedValue(new Error('Invalid PDF'));
 
       const buffer = Buffer.from('not a real pdf');
 

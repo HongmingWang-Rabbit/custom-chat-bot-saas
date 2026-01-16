@@ -22,6 +22,7 @@ vi.mock('@/lib/supabase/provisioning', () => ({
   provisionSupabaseProject: vi.fn(),
   deleteSupabaseProject: vi.fn(),
   isProvisioningConfigured: vi.fn(() => true),
+  generateSecurePassword: vi.fn(() => 'mock-secure-password-123'),
 }));
 
 vi.mock('@/lib/supabase/tenant-migrations', () => ({
@@ -399,6 +400,9 @@ describe('TenantService', () => {
     });
 
     it('should provision Supabase project and create tenant', async () => {
+      // Mock: no existing tenant found
+      mockDbMethods.limit.mockResolvedValueOnce([]);
+
       const result = await service.createTenantWithProvisioning({
         slug: 'auto-tenant',
         name: 'Auto Tenant',
@@ -408,18 +412,24 @@ describe('TenantService', () => {
       expect(result.supabaseCredentials.projectRef).toBe('test-ref');
       expect(result.supabaseCredentials.storageBucketName).toBe('documents');
       expect(result.migrations.success).toBe(true);
-      expect(provisionSupabaseProject).toHaveBeenCalledWith('auto-tenant', undefined);
+      expect(provisionSupabaseProject).toHaveBeenCalled();
       expect(runTenantMigrations).toHaveBeenCalled();
     });
 
     it('should pass region to provisioning', async () => {
+      // Mock: no existing tenant found
+      mockDbMethods.limit.mockResolvedValueOnce([]);
+
       await service.createTenantWithProvisioning({
         slug: 'auto-tenant',
         name: 'Auto Tenant',
         region: 'eu-west-1',
       });
 
-      expect(provisionSupabaseProject).toHaveBeenCalledWith('auto-tenant', 'eu-west-1');
+      expect(provisionSupabaseProject).toHaveBeenCalledWith(
+        'auto-tenant',
+        expect.objectContaining({ region: 'eu-west-1' })
+      );
     });
 
     it('should throw if provisioning is not configured', async () => {
@@ -434,6 +444,9 @@ describe('TenantService', () => {
     });
 
     it('should continue even if migrations fail', async () => {
+      // Mock: no existing tenant found
+      mockDbMethods.limit.mockResolvedValueOnce([]);
+
       (runTenantMigrations as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         success: false,
         migrationsRun: [],

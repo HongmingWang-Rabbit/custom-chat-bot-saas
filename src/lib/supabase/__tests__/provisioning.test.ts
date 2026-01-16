@@ -216,7 +216,7 @@ describe('provisionSupabaseProject', () => {
     mockFetchResponse(mockPoolerConfigResponse);
     mockFetchResponse(mockStorageBucketResponse);
 
-    await provisionSupabaseProject('test-tenant', 'eu-west-1');
+    await provisionSupabaseProject('test-tenant', { region: 'eu-west-1' });
 
     // Check that the create project call included the region
     expect(mockFetch).toHaveBeenCalledWith(

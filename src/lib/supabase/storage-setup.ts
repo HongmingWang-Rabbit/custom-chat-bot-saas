@@ -8,6 +8,11 @@
  * (bypasses RLS issues on newly created projects).
  */
 
+import { logger } from '@/lib/logger';
+
+// Create a child logger for storage setup
+const log = logger.child({ layer: 'storage', service: 'StorageSetup' });
+
 // =============================================================================
 // Configuration
 // =============================================================================
@@ -207,7 +212,7 @@ export async function createStorageBucket(
 
   // If no service key provided, skip bucket creation
   if (!serviceKey) {
-    console.log(`[Storage] No service key provided, skipping bucket creation for ${projectRef}`);
+    log.warn({ event: 'skip_bucket_creation', projectRef, bucketName }, 'No service key provided, skipping bucket creation');
     return {
       bucketId: bucketName,
       bucketName: bucketName,
@@ -215,7 +220,7 @@ export async function createStorageBucket(
     };
   }
 
-  console.log(`[Storage] Creating bucket '${bucketName}' for project ${projectRef}`);
+  log.info({ event: 'create_bucket_start', projectRef, bucketName }, 'Creating storage bucket');
 
   // Retry logic for storage service initialization
   let lastError: Error | null = null;
@@ -238,7 +243,7 @@ export async function createStorageBucket(
         }
       );
 
-      console.log(`[Storage] Bucket '${bucketName}' created successfully`);
+      log.info({ event: 'create_bucket_complete', projectRef, bucketName }, 'Storage bucket created successfully');
 
       return {
         bucketId: bucket.name || bucketName,
@@ -247,7 +252,7 @@ export async function createStorageBucket(
       };
     } catch (error) {
       if (error instanceof BucketExistsError) {
-        console.log(`[Storage] Bucket '${bucketName}' already exists`);
+        log.info({ event: 'bucket_exists', projectRef, bucketName }, 'Bucket already exists');
         return {
           bucketId: bucketName,
           bucketName: bucketName,
@@ -267,7 +272,7 @@ export async function createStorageBucket(
 
       if (isTransientError && attempt < STORAGE_MAX_RETRIES) {
         const delay = STORAGE_INITIAL_DELAY * attempt;
-        console.log(`[Storage] Storage service not ready (attempt ${attempt}/${STORAGE_MAX_RETRIES}), retrying in ${delay}ms...`);
+        log.debug({ event: 'bucket_retry', projectRef, bucketName, attempt, maxAttempts: STORAGE_MAX_RETRIES, delay_ms: delay }, 'Storage service not ready, retrying');
         await new Promise(resolve => setTimeout(resolve, delay));
         continue;
       }
@@ -300,10 +305,10 @@ export async function verifyStorageBucket(
       { method: 'GET' }
     );
 
-    console.log(`[Storage] Bucket '${bucketName}' verified: exists=${!!bucket.name}`);
+    log.debug({ event: 'verify_bucket', projectRef, bucketName, exists: !!bucket.name }, 'Bucket verification complete');
     return !!bucket.name;
   } catch (error) {
-    console.log(`[Storage] Bucket '${bucketName}' verification failed:`, error);
+    log.warn({ event: 'verify_bucket_failed', projectRef, bucketName, error: error instanceof Error ? error.message : String(error) }, 'Bucket verification failed');
     return false;
   }
 }
@@ -322,7 +327,7 @@ export async function updateStorageBucket(
   bucketName: string,
   config: Partial<Omit<StorageBucketConfig, 'bucketName'>>
 ): Promise<void> {
-  console.log(`[Storage] Updating bucket '${bucketName}' for project ${projectRef}`);
+  log.info({ event: 'update_bucket_start', projectRef, bucketName }, 'Updating storage bucket');
 
   const updatePayload: Record<string, unknown> = {};
 
@@ -341,7 +346,7 @@ export async function updateStorageBucket(
     body: JSON.stringify(updatePayload),
   });
 
-  console.log(`[Storage] Bucket '${bucketName}' updated successfully`);
+  log.info({ event: 'update_bucket_complete', projectRef, bucketName }, 'Storage bucket updated successfully');
 }
 
 /**
@@ -357,7 +362,7 @@ export async function deleteStorageBucket(
   serviceKey: string,
   bucketName: string
 ): Promise<void> {
-  console.log(`[Storage] Deleting bucket '${bucketName}' for project ${projectRef}`);
+  log.info({ event: 'delete_bucket_start', projectRef, bucketName }, 'Deleting storage bucket');
 
   // First, empty the bucket (required before deletion)
   await storageApi(projectRef, serviceKey, `/bucket/${bucketName}/empty`, {
@@ -369,7 +374,7 @@ export async function deleteStorageBucket(
     method: 'DELETE',
   });
 
-  console.log(`[Storage] Bucket '${bucketName}' deleted successfully`);
+  log.info({ event: 'delete_bucket_complete', projectRef, bucketName }, 'Storage bucket deleted successfully');
 }
 
 /**

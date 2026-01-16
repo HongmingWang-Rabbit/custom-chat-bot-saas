@@ -102,7 +102,18 @@ export class RAGService {
 
     // 0. Check for conversational queries (greetings, help) - skip retrieval
     if (this.isConversationalQuery(request.query)) {
-      return this.createNoContextResponse(request.query, 0);
+      const response = this.createNoContextResponse(request.query, 0);
+      // Log conversational queries too
+      await this.logInteraction({
+        query: request.query,
+        answer: response.answer,
+        confidence: 0,
+        retrievedChunks: [],
+        citations: [],
+        sessionId: request.sessionId,
+        duration: Date.now() - startTime,
+      });
+      return response;
     }
 
     // 1. Retrieve relevant chunks
@@ -115,7 +126,18 @@ export class RAGService {
 
     // 2. Check if we have relevant content
     if (retrieval.chunks.length === 0) {
-      return this.createNoContextResponse(request.query, retrieval.queryEmbeddingTokens);
+      const response = this.createNoContextResponse(request.query, retrieval.queryEmbeddingTokens);
+      // Log queries with no context found
+      await this.logInteraction({
+        query: request.query,
+        answer: response.answer,
+        confidence: 0,
+        retrievedChunks: [],
+        citations: [],
+        sessionId: request.sessionId,
+        duration: Date.now() - startTime,
+      });
+      return response;
     }
 
     // 3. Rerank chunks for better relevance
@@ -191,6 +213,16 @@ export class RAGService {
       if (this.isConversationalQuery(request.query)) {
         const conversationalResponse = this.createNoContextResponse(request.query, 0);
         callbacks.onChunk?.(conversationalResponse.answer);
+        // Log conversational queries
+        await this.logInteraction({
+          query: request.query,
+          answer: conversationalResponse.answer,
+          confidence: 0,
+          retrievedChunks: [],
+          citations: [],
+          sessionId: request.sessionId,
+          duration: Date.now() - startTime,
+        });
         callbacks.onComplete?.(conversationalResponse);
         return;
       }
@@ -210,6 +242,16 @@ export class RAGService {
           retrieval.queryEmbeddingTokens
         );
         callbacks.onChunk?.(noContextResponse.answer);
+        // Log queries with no context
+        await this.logInteraction({
+          query: request.query,
+          answer: noContextResponse.answer,
+          confidence: 0,
+          retrievedChunks: [],
+          citations: [],
+          sessionId: request.sessionId,
+          duration: Date.now() - startTime,
+        });
         callbacks.onComplete?.(noContextResponse);
         return;
       }
@@ -367,11 +409,28 @@ Try asking about financial performance, risk factors, company strategy, or any o
         },
       };
 
+      log.info(
+        { tenant: this.tenantSlug, questionLength: params.query.length },
+        'Attempting to log Q&A interaction'
+      );
+
       await this.db.insert(qaLogs).values(qaLog);
+
+      log.info(
+        { tenant: this.tenantSlug },
+        'Q&A interaction logged successfully'
+      );
     } catch (error) {
-      // Don't fail the request if logging fails
+      // Don't fail the request if logging fails, but log detailed error
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
       log.error(
-        { error: error instanceof Error ? error.message : String(error), tenant: this.tenantSlug },
+        {
+          error: errorMessage,
+          stack: errorStack,
+          tenant: this.tenantSlug,
+          questionLength: params.query.length,
+        },
         'Failed to log Q&A interaction to database'
       );
     }

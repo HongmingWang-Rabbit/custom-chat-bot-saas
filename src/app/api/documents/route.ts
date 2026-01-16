@@ -83,6 +83,7 @@ export async function GET(request: NextRequest) {
         fileSize: d.fileSize,
         status: d.status,
         chunkCount: d.chunkCount,
+        hasOriginalFile: !!d.storageKey,
         createdAt: d.createdAt,
         updatedAt: d.updatedAt,
       })),

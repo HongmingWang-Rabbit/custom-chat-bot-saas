@@ -25,9 +25,13 @@ const updateTenantSchema = z.object({
     .object({
       primaryColor: z.string().optional(),
       secondaryColor: z.string().optional(),
+      backgroundColor: z.string().optional(),
+      textColor: z.string().optional(),
+      accentColor: z.string().optional(),
+      fontFamily: z.string().optional(),
+      borderRadius: z.string().optional(),
       logoUrl: z.string().url().optional().nullable(),
       faviconUrl: z.string().url().optional().nullable(),
-      customCss: z.string().optional(),
     })
     .optional(),
   llmProvider: z.enum(['openai', 'anthropic', 'azure']).optional(),
@@ -145,8 +149,8 @@ export async function PATCH(
 
   const tenantService = getTenantService();
 
-  // Check tenant exists
-  const existing = await tenantService.getTenant(slug);
+  // Check tenant exists (use getTenantAnyStatus to allow updating provisioning tenants)
+  const existing = await tenantService.getTenantAnyStatus(slug);
   if (!existing) {
     return Response.json(
       { error: 'Tenant not found', code: 'NOT_FOUND' },

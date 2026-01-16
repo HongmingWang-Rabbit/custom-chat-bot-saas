@@ -10,23 +10,27 @@
 
 import mammoth from 'mammoth';
 
-// pdf-parse type for parsed result
-interface PdfData {
-  text: string;
-  numpages: number;
+// pdf-parse v2.x has a class-based API
+// Use dynamic import to avoid type definition issues
+interface PDFParserInstance {
+  load(): Promise<void>;
+  getText(): Promise<string>;
+  destroy(): void;
 }
 
-// pdf-parse doesn't have proper ESM exports, use dynamic import wrapper
-type PdfParser = (buffer: Buffer) => Promise<PdfData>;
-let pdfParse: PdfParser | null = null;
+interface PDFParseConstructor {
+  new (options: { data: Buffer }): PDFParserInstance;
+}
 
-async function getPdfParser(): Promise<PdfParser> {
-  if (!pdfParse) {
-    // Dynamic import to handle CommonJS module compatibility
-    const pdfModule = await import('pdf-parse') as unknown as { default?: PdfParser } & PdfParser;
-    pdfParse = (pdfModule.default || pdfModule) as PdfParser;
+let PDFParseClass: PDFParseConstructor | null = null;
+
+async function getPDFParser(): Promise<PDFParseConstructor> {
+  if (!PDFParseClass) {
+    const mod = await import('pdf-parse');
+    // Cast through unknown to avoid private property type conflicts
+    PDFParseClass = (mod as unknown as { PDFParse: PDFParseConstructor }).PDFParse;
   }
-  return pdfParse;
+  return PDFParseClass;
 }
 
 // =============================================================================
@@ -97,18 +101,25 @@ export function getMimeType(filename: string): SupportedMimeType | null {
  * Parse PDF file and extract text.
  */
 async function parsePDF(buffer: Buffer): Promise<ParseResult> {
-  const pdf = await getPdfParser();
-  const data = await pdf(buffer);
+  const PDFParse = await getPDFParser();
+  const parser = new PDFParse({ data: buffer });
+  await parser.load();
 
-  const content = data.text
+  const result = await parser.getText();
+  parser.destroy();
+
+  // getText() returns { pages, text, total }
+  const rawText = typeof result === 'string' ? result : (result as { text: string }).text || '';
+
+  const content = rawText
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
+    .replace(/-- \d+ of \d+ --/g, '') // Remove page markers
     .trim();
 
   return {
     content,
     metadata: {
-      pageCount: data.numpages,
       wordCount: content.split(/\s+/).filter(Boolean).length,
       charCount: content.length,
     },

@@ -36,15 +36,18 @@ export async function GET(request: NextRequest) {
   // Validate query params
   let params;
   try {
-    params = listLogsSchema.parse({
+    const rawParams = {
       tenantSlug: searchParams.get('tenantSlug'),
-      flagged: searchParams.get('flagged'),
-      reviewed: searchParams.get('reviewed'),
-      limit: searchParams.get('limit'),
-      offset: searchParams.get('offset'),
-    });
+      flagged: searchParams.get('flagged') ?? undefined,
+      reviewed: searchParams.get('reviewed') ?? undefined,
+      limit: searchParams.get('limit') ?? undefined,
+      offset: searchParams.get('offset') ?? undefined,
+    };
+    log.info({ event: 'validate_params', rawParams }, 'Validating qa-logs params');
+    params = listLogsSchema.parse(rawParams);
   } catch (error) {
     if (error instanceof z.ZodError) {
+      log.error({ event: 'validation_error', errors: error.errors }, 'QA logs validation failed');
       return Response.json(
         { error: 'Invalid parameters', code: 'INVALID_PARAMS', details: error.errors },
         { status: 400 }
@@ -59,14 +62,17 @@ export async function GET(request: NextRequest) {
   const { tenantSlug, flagged, reviewed, limit, offset } = params;
 
   const tenantService = getTenantService();
+  log.info({ event: 'get_tenant_db', tenantSlug }, 'Getting tenant database');
   const tenantDb = await tenantService.getTenantDb(tenantSlug);
 
   if (!tenantDb) {
+    log.warn({ event: 'tenant_not_found', tenantSlug }, 'Tenant not found');
     return Response.json(
       { error: 'Tenant not found', code: 'TENANT_NOT_FOUND' },
       { status: 404 }
     );
   }
+  log.info({ event: 'tenant_db_obtained', tenantSlug }, 'Tenant database connection obtained');
 
   try {
     // Build conditions

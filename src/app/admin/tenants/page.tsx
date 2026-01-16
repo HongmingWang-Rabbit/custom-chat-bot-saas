@@ -122,6 +122,7 @@ export default function TenantsPage() {
 function OrganizationCard({ tenant }: { tenant: Tenant }) {
   const statusColors: Record<string, string> = {
     active: 'bg-green-100 text-green-700',
+    provisioning: 'bg-blue-100 text-blue-700',
     suspended: 'bg-yellow-100 text-yellow-700',
     pending: 'bg-blue-100 text-blue-700',
     deleted: 'bg-red-100 text-red-700',

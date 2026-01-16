@@ -8,7 +8,7 @@
  * - Type-safe queries with Drizzle
  */
 
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 import { decrypt, encrypt } from '@/lib/crypto/encryption';
 import {
   getMainDb,
@@ -235,13 +235,19 @@ export class TenantService {
   }
 
   /**
-   * List all active tenants (without secrets).
+   * List all tenants (without secrets).
+   * Includes both 'active' and 'provisioning' status tenants.
    */
   async listTenants(): Promise<Tenant[]> {
     return this.mainDb
       .select()
       .from(tenants)
-      .where(eq(tenants.status, 'active'))
+      .where(
+        or(
+          eq(tenants.status, 'active'),
+          eq(tenants.status, 'provisioning')
+        )
+      )
       .orderBy(tenants.createdAt);
   }
 
@@ -556,8 +562,8 @@ export class TenantService {
       status?: TenantStatus;
     }
   ): Promise<Tenant | null> {
-    // Get existing tenant to merge partial updates
-    const existing = await this.getTenant(slug);
+    // Get existing tenant to merge partial updates (any status)
+    const existing = await this.getTenantAnyStatus(slug);
     if (!existing) return null;
 
     const updateData: Partial<Tenant> = {

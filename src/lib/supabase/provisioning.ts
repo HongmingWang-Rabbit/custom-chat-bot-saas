@@ -13,6 +13,10 @@
 
 import crypto from 'crypto';
 import { createStorageBucket, DEFAULT_BUCKET_NAME } from './storage-setup';
+import { logger } from '@/lib/logger';
+
+// Create a child logger for provisioning
+const log = logger.child({ layer: 'provisioning', service: 'SupabaseProvisioning' });
 
 // =============================================================================
 // Configuration
@@ -87,7 +91,7 @@ export function validateProvisioningCredentials(): void {
         `Get access token from: https://supabase.com/dashboard/account/tokens`
     );
 
-    console.error('[Provisioning] FATAL:', error.message);
+    log.error({ event: 'credentials_missing', missing }, error.message);
     throw error;
   }
 }
@@ -202,17 +206,17 @@ async function findProjectByName(name: string): Promise<ProjectStatus | null> {
  * Used to clean up orphaned projects before recreation.
  */
 async function deleteProjectByRef(projectRef: string): Promise<void> {
-  console.log(`[Provisioning] Deleting orphaned project ${projectRef}...`);
+  log.info({ event: 'delete_orphaned_start', projectRef }, 'Deleting orphaned project');
 
   await supabaseApi(`/projects/${projectRef}`, {
     method: 'DELETE',
   });
 
   // Wait a bit for deletion to propagate
-  console.log(`[Provisioning] Waiting for project deletion to complete...`);
+  log.debug({ event: 'delete_waiting', projectRef }, 'Waiting for project deletion to complete');
   await new Promise((resolve) => setTimeout(resolve, 5000));
 
-  console.log(`[Provisioning] Project ${projectRef} deleted successfully`);
+  log.info({ event: 'delete_orphaned_complete', projectRef }, 'Orphaned project deleted successfully');
 }
 
 /**
@@ -229,8 +233,7 @@ async function createProject(
     region || process.env.SUPABASE_DEFAULT_REGION || DEFAULT_REGION;
   const projectName = `tenant-${tenantSlug}`;
 
-  console.log(`[Provisioning] Creating project for tenant: ${tenantSlug}`);
-  console.log(`[Provisioning] Region: ${projectRegion}, Org: ${orgId}`);
+  log.info({ event: 'create_project_start', tenantSlug, region: projectRegion, orgId }, 'Creating Supabase project');
 
   try {
     const response = await supabaseApi<CreateProjectResponse>('/projects', {
@@ -244,7 +247,7 @@ async function createProject(
       }),
     });
 
-    console.log(`[Provisioning] Project created: ${response.ref}`);
+    log.info({ event: 'create_project_complete', projectRef: response.ref, tenantSlug }, 'Project created');
 
     return response;
   } catch (error) {
@@ -253,7 +256,7 @@ async function createProject(
       error instanceof Error &&
       error.message.includes('already exists')
     ) {
-      console.log(`[Provisioning] Project ${projectName} already exists, checking status...`);
+      log.warn({ event: 'project_exists', projectName, tenantSlug }, 'Project already exists, checking status');
 
       const existingProject = await findProjectByName(projectName);
       if (!existingProject) {
@@ -265,7 +268,7 @@ async function createProject(
 
       // Check the project's current status
       const projectStatus = await getProjectStatus(existingProject.ref);
-      console.log(`[Provisioning] Existing project status: ${projectStatus.status}`);
+      log.info({ event: 'existing_project_status', projectRef: existingProject.ref, status: projectStatus.status }, 'Existing project status checked');
 
       // If project is still coming up, don't delete - tell user to wait
       if (projectStatus.status === 'COMING_UP') {
@@ -278,16 +281,16 @@ async function createProject(
 
       // If project is active but we don't have it in our database, it's orphaned - delete it
       if (projectStatus.status === 'ACTIVE_HEALTHY') {
-        console.log(`[Provisioning] Project is active but orphaned, cleaning up...`);
+        log.info({ event: 'orphaned_project_cleanup', projectRef: existingProject.ref, status: 'ACTIVE_HEALTHY' }, 'Project is active but orphaned, cleaning up');
       } else {
-        console.log(`[Provisioning] Project in state ${projectStatus.status}, cleaning up...`);
+        log.info({ event: 'orphaned_project_cleanup', projectRef: existingProject.ref, status: projectStatus.status }, 'Project in unexpected state, cleaning up');
       }
 
       // Delete the orphaned project
       await deleteProjectByRef(existingProject.ref);
 
       // Retry creation
-      console.log(`[Provisioning] Retrying project creation after cleanup...`);
+      log.info({ event: 'create_project_retry', tenantSlug }, 'Retrying project creation after cleanup');
       const response = await supabaseApi<CreateProjectResponse>('/projects', {
         method: 'POST',
         body: JSON.stringify({
@@ -299,7 +302,7 @@ async function createProject(
         }),
       });
 
-      console.log(`[Provisioning] Project created after cleanup: ${response.ref}`);
+      log.info({ event: 'create_project_retry_complete', projectRef: response.ref, tenantSlug }, 'Project created after cleanup');
 
       return response;
     }
@@ -340,17 +343,18 @@ async function getProjectApiKeys(
  * Wait for a project to become ready.
  */
 async function waitForProjectReady(projectRef: string): Promise<ProjectStatus> {
-  console.log(`[Provisioning] Waiting for project ${projectRef} to be ready...`);
+  log.info({ event: 'wait_ready_start', projectRef }, 'Waiting for project to be ready');
 
   for (let attempt = 1; attempt <= MAX_POLL_ATTEMPTS; attempt++) {
     const status = await getProjectStatus(projectRef);
 
-    console.log(
-      `[Provisioning] Poll ${attempt}/${MAX_POLL_ATTEMPTS}: Status = ${status.status}`
+    log.debug(
+      { event: 'poll_status', projectRef, attempt, maxAttempts: MAX_POLL_ATTEMPTS, status: status.status },
+      `Poll ${attempt}/${MAX_POLL_ATTEMPTS}: Status = ${status.status}`
     );
 
     if (status.status === 'ACTIVE_HEALTHY') {
-      console.log(`[Provisioning] Project ${projectRef} is ready!`);
+      log.info({ event: 'project_ready', projectRef }, 'Project is ready');
       return status;
     }
 
@@ -468,7 +472,7 @@ export async function provisionSupabaseProject(
   validateProvisioningCredentials();
 
   const isRecovery = !!(options.dbPassword && options.existingProjectRef);
-  console.log(`[Provisioning] Starting provisioning for tenant: ${tenantSlug}${isRecovery ? ' (recovery mode)' : ''}`);
+  log.info({ event: 'provisioning_start', tenantSlug, isRecovery }, `Starting provisioning for tenant${isRecovery ? ' (recovery mode)' : ''}`);
   const startTime = Date.now();
 
   try {
@@ -478,7 +482,7 @@ export async function provisionSupabaseProject(
 
     // Use existing project or create new one
     if (options.existingProjectRef) {
-      console.log(`[Provisioning] Using existing project: ${options.existingProjectRef}`);
+      log.info({ event: 'using_existing_project', projectRef: options.existingProjectRef, tenantSlug }, 'Using existing project for recovery');
       projectRef = options.existingProjectRef;
     } else {
       // Create the project (handles orphaned project cleanup automatically)
@@ -498,9 +502,9 @@ export async function provisionSupabaseProject(
     const { anonKey, serviceKey } = await getProjectApiKeys(projectRef);
 
     // Get pooler configuration from API (critical: host varies per project!)
-    console.log(`[Provisioning] Fetching pooler config for ${projectRef}...`);
+    log.debug({ event: 'fetch_pooler_config', projectRef }, 'Fetching pooler config');
     const poolerConfig = await getPoolerConfig(projectRef);
-    console.log(`[Provisioning] Pooler host: ${poolerConfig.db_host}`);
+    log.info({ event: 'pooler_config_obtained', projectRef, poolerHost: poolerConfig.db_host }, 'Pooler config obtained');
 
     // Build the database connection strings
     // Pooler URL is for production use (connection pooling)
@@ -509,12 +513,13 @@ export async function provisionSupabaseProject(
     const directDatabaseUrl = buildDirectDatabaseUrl(projectRef, dbPassword);
 
     // Create storage bucket for documents
-    console.log(`[Provisioning] Creating storage bucket for project ${projectRef}...`);
+    log.debug({ event: 'create_storage_bucket', projectRef }, 'Creating storage bucket');
     const storageBucket = await createStorageBucket(projectRef, serviceKey);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(
-      `[Provisioning] Successfully provisioned project ${projectRef} in ${elapsed}s`
+    log.info(
+      { event: 'provisioning_complete', projectRef, tenantSlug, elapsed_s: parseFloat(elapsed) },
+      `Successfully provisioned project in ${elapsed}s`
     );
 
     return {
@@ -528,9 +533,9 @@ export async function provisionSupabaseProject(
     };
   } catch (error) {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.error(
-      `[Provisioning] Failed to provision project for ${tenantSlug} after ${elapsed}s:`,
-      error
+    log.error(
+      { event: 'provisioning_failed', tenantSlug, elapsed_s: parseFloat(elapsed), error: error instanceof Error ? error.message : String(error) },
+      `Failed to provision project after ${elapsed}s`
     );
     throw error;
   }
@@ -547,13 +552,13 @@ export async function provisionSupabaseProject(
 export async function deleteSupabaseProject(projectRef: string): Promise<void> {
   validateProvisioningCredentials();
 
-  console.log(`[Provisioning] Deleting project: ${projectRef}`);
+  log.info({ event: 'delete_project_start', projectRef }, 'Deleting Supabase project');
 
   await supabaseApi(`/projects/${projectRef}`, {
     method: 'DELETE',
   });
 
-  console.log(`[Provisioning] Project ${projectRef} deleted`);
+  log.info({ event: 'delete_project_complete', projectRef }, 'Supabase project deleted');
 }
 
 /**
@@ -562,13 +567,13 @@ export async function deleteSupabaseProject(projectRef: string): Promise<void> {
 export async function pauseSupabaseProject(projectRef: string): Promise<void> {
   validateProvisioningCredentials();
 
-  console.log(`[Provisioning] Pausing project: ${projectRef}`);
+  log.info({ event: 'pause_project_start', projectRef }, 'Pausing Supabase project');
 
   await supabaseApi(`/projects/${projectRef}/pause`, {
     method: 'POST',
   });
 
-  console.log(`[Provisioning] Project ${projectRef} paused`);
+  log.info({ event: 'pause_project_complete', projectRef }, 'Supabase project paused');
 }
 
 /**
@@ -577,13 +582,13 @@ export async function pauseSupabaseProject(projectRef: string): Promise<void> {
 export async function resumeSupabaseProject(projectRef: string): Promise<void> {
   validateProvisioningCredentials();
 
-  console.log(`[Provisioning] Resuming project: ${projectRef}`);
+  log.info({ event: 'resume_project_start', projectRef }, 'Resuming Supabase project');
 
   await supabaseApi(`/projects/${projectRef}/restore`, {
     method: 'POST',
   });
 
-  console.log(`[Provisioning] Project ${projectRef} resume initiated`);
+  log.info({ event: 'resume_project_complete', projectRef }, 'Supabase project resume initiated');
 }
 
 /**
