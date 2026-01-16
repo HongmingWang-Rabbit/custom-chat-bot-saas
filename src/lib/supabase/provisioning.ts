@@ -248,12 +248,12 @@ async function createProject(
 
     return response;
   } catch (error) {
-    // Check if project already exists - delete and retry
+    // Check if project already exists
     if (
       error instanceof Error &&
       error.message.includes('already exists')
     ) {
-      console.log(`[Provisioning] Project ${projectName} already exists (orphaned), cleaning up...`);
+      console.log(`[Provisioning] Project ${projectName} already exists, checking status...`);
 
       const existingProject = await findProjectByName(projectName);
       if (!existingProject) {
@@ -261,6 +261,26 @@ async function createProject(
           `Project ${projectName} exists but could not be found. ` +
           `Please check Supabase dashboard and delete orphaned projects manually.`
         );
+      }
+
+      // Check the project's current status
+      const projectStatus = await getProjectStatus(existingProject.ref);
+      console.log(`[Provisioning] Existing project status: ${projectStatus.status}`);
+
+      // If project is still coming up, don't delete - tell user to wait
+      if (projectStatus.status === 'COMING_UP') {
+        throw new Error(
+          `A Supabase project for "${tenantSlug}" is still initializing (this can take 5-10 minutes). ` +
+          `Please wait a few minutes and try again. If it's been more than 15 minutes, ` +
+          `delete the project "${projectName}" from the Supabase dashboard and retry.`
+        );
+      }
+
+      // If project is active but we don't have it in our database, it's orphaned - delete it
+      if (projectStatus.status === 'ACTIVE_HEALTHY') {
+        console.log(`[Provisioning] Project is active but orphaned, cleaning up...`);
+      } else {
+        console.log(`[Provisioning] Project in state ${projectStatus.status}, cleaning up...`);
       }
 
       // Delete the orphaned project
