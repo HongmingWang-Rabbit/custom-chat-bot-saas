@@ -23,6 +23,7 @@
     "migrate:main": "node --env-file=.env --import tsx scripts/migrate-all.ts --main-only",
     "migrate:tenants": "node --env-file=.env --import tsx scripts/migrate-all.ts --tenants-only",
     "migrate:dry-run": "node --env-file=.env --import tsx scripts/migrate-all.ts --dry-run",
+    "migrate:embeddings": "node --env-file=.env --import tsx scripts/migrate-embeddings.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
