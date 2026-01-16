@@ -119,7 +119,10 @@ export class TenantsPage extends BasePage {
    */
   async clickSettings(slug: string) {
     const card = this.getOrganizationCard(slug);
-    await card.getByRole('link', { name: 'Settings' }).click();
+    await Promise.all([
+      this.page.waitForURL(`**/admin/tenants/${slug}**`),
+      card.getByRole('link', { name: 'Settings' }).click(),
+    ]);
     await this.waitForNetworkIdle();
   }
 

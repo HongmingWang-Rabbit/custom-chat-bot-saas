@@ -238,6 +238,7 @@ export async function POST(request: NextRequest) {
     const docTitle = title || file.name.replace(/\.[^/.]+$/, '');
     const newDoc: NewDocument = {
       id: docId,
+      companySlug: tenantSlug,
       title: docTitle,
       content: parseResult.content,
       url: url || undefined,
@@ -265,6 +266,7 @@ export async function POST(request: NextRequest) {
         doc.id,
         docTitle,
         parseResult.content,
+        tenantSlug,
         tenant.llmApiKey,
         tenant.ragConfig,
         ctx,
@@ -399,6 +401,7 @@ async function processDocument(
   docId: string,
   docTitle: string,
   content: string,
+  companySlug: string,
   llmApiKey: string | null,
   ragConfig: { chunkSize?: number; chunkOverlap?: number },
   ctx: ReturnType<typeof createRequestContext>,
@@ -446,6 +449,7 @@ async function processDocument(
   timer.mark('db_chunks');
   const chunkRecords: NewDocumentChunk[] = chunks.map((chunk, index) => ({
     docId,
+    companySlug,
     content: chunk.content,
     embedding: embeddings[index],
     chunkIndex: chunk.chunkIndex,

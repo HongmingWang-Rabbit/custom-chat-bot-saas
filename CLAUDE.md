@@ -167,8 +167,9 @@ Required:
 - `SUPABASE_ACCESS_TOKEN` - Management API for tenant provisioning
 - `SUPABASE_ORG_ID` - Organization for new tenant projects
 
-Optional (Caching):
-- `REDIS_URL` - Redis connection string (enables RAG response caching)
+Optional (Caching via Upstash):
+- `UPSTASH_REDIS_REST_URL` - Upstash Redis REST URL (enables RAG response caching)
+- `UPSTASH_REDIS_REST_TOKEN` - Upstash Redis REST token
 - `RAG_CACHE_TTL_SECONDS` - Cache TTL in seconds (default: 3600)
 
 ## Testing Structure

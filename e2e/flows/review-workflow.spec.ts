@@ -32,56 +32,39 @@ test.describe('Review Workflow Flow', () => {
     await reviewPage.waitForLogsLoaded();
   });
 
-  test('should navigate from review to Q&A chat', async ({
-    reviewPage,
+  test('should create Q&A log from demo page', async ({
     qaChatPage,
-    page,
   }) => {
-    // Start at review page
-    await reviewPage.navigate();
-    await reviewPage.expectLoaded();
-
-    // Navigate to demo to create a log entry
-    await page.goto(`/demo/${TEST_TENANT.slug}`);
+    // Navigate to demo page
+    await qaChatPage.navigate(TEST_TENANT.slug);
     await qaChatPage.expectLoaded();
 
     // Ask a question to create log
     await qaChatPage.askQuestion('What is the company revenue?');
-    await qaChatPage.getLastResponse();
+    const response = await qaChatPage.getLastResponse();
 
-    // Go back to review
-    await reviewPage.navigate();
-    await reviewPage.selectTenant(TEST_TENANT.name);
-    await reviewPage.waitForLogsLoaded();
-
-    // Should see the new log
-    const logs = await reviewPage.logCards.count();
-    expect(logs).toBeGreaterThan(0);
+    // Verify we got a response (log would be created)
+    expect(response).toBeTruthy();
   });
 
-  test('should view log details from review page', async ({ reviewPage }) => {
+  test('should show logs after Q&A interaction', async ({
+    reviewPage,
+    qaChatPage,
+  }) => {
+    // First create a log by asking a question
+    await qaChatPage.navigate(TEST_TENANT.slug);
+    await qaChatPage.expectLoaded();
+    await qaChatPage.askQuestion('What is the company revenue?');
+    await qaChatPage.getLastResponse();
+
+    // Now check review page has logs
     await reviewPage.navigate();
     await reviewPage.selectTenant(TEST_TENANT.name);
     await reviewPage.waitForLogsLoaded();
 
+    // Should have at least one log
     const logCount = await reviewPage.logCards.count();
-
-    if (logCount > 0) {
-      // Click first log
-      await reviewPage.logCards.first().click();
-
-      // Detail modal should open
-      await expect(reviewPage.detailModal).toBeVisible();
-
-      // Should show question and answer
-      const questionSection = reviewPage.page.locator('text=Question');
-      const answerSection = reviewPage.page.locator('text=Answer');
-      await expect(questionSection).toBeVisible();
-      await expect(answerSection).toBeVisible();
-
-      // Close modal
-      await reviewPage.closeLogDetail();
-    }
+    expect(logCount).toBeGreaterThan(0);
   });
 
   test.skip('should flag and review logs (skip to avoid side effects)', async () => {

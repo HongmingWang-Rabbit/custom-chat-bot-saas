@@ -54,6 +54,7 @@ export const vector = customType<{
 
 export const documents = pgTable('documents', {
   id: uuid('id').primaryKey().defaultRandom(),
+  companySlug: varchar('company_slug', { length: 100 }).notNull(),
   title: varchar('title', { length: 500 }).notNull(),
   content: text('content').notNull(),
   url: varchar('url', { length: 1000 }),
@@ -75,6 +76,7 @@ export const documents = pgTable('documents', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
+  companySlugIdx: index('idx_documents_company_slug').on(table.companySlug),
   statusIdx: index('idx_documents_status').on(table.status),
   createdAtIdx: index('idx_documents_created_at').on(table.createdAt),
 }));
@@ -86,6 +88,7 @@ export const documents = pgTable('documents', {
 export const documentChunks = pgTable('document_chunks', {
   id: uuid('id').primaryKey().defaultRandom(),
   docId: uuid('doc_id').notNull().references(() => documents.id, { onDelete: 'cascade' }),
+  companySlug: varchar('company_slug', { length: 100 }).notNull(),
   content: text('content').notNull(),
 
   // pgvector embedding (1536 dimensions for OpenAI text-embedding-3-small)
@@ -104,6 +107,7 @@ export const documentChunks = pgTable('document_chunks', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   docIdIdx: index('idx_document_chunks_doc_id').on(table.docId),
+  companySlugIdx: index('idx_document_chunks_company_slug').on(table.companySlug),
   // Note: IVFFlat index for vector search is created via raw SQL migration
 }));
 
@@ -113,6 +117,7 @@ export const documentChunks = pgTable('document_chunks', {
 
 export const qaLogs = pgTable('qa_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
+  companySlug: varchar('company_slug', { length: 100 }).notNull(),
   question: text('question').notNull(),
   answer: text('answer').notNull(),
 
@@ -142,6 +147,7 @@ export const qaLogs = pgTable('qa_logs', {
   // Timestamp
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
+  companySlugIdx: index('idx_qa_logs_company_slug').on(table.companySlug),
   flaggedIdx: index('idx_qa_logs_flagged').on(table.flagged),
   createdAtIdx: index('idx_qa_logs_created_at').on(table.createdAt),
   confidenceIdx: index('idx_qa_logs_confidence').on(table.confidence),

@@ -15,25 +15,30 @@ export class TenantSettingsPage extends BasePage {
     return this.page.locator('h1');
   }
 
-  get backButton() {
-    return this.page.getByRole('link', { name: 'Back to Organizations' });
+  get viewDemoButton() {
+    // Scope to main content to avoid matching nav link
+    return this.page.getByRole('main').getByRole('link', { name: 'View Demo' });
   }
 
-  // Tabs
+  get deleteButton() {
+    return this.page.getByRole('button', { name: 'Delete' });
+  }
+
+  // Tabs (actual tabs: General, Documents, Branding, RAG Settings)
   get generalTab() {
     return this.page.getByRole('button', { name: 'General' });
+  }
+
+  get documentsTab() {
+    return this.page.getByRole('button', { name: 'Documents' });
   }
 
   get brandingTab() {
     return this.page.getByRole('button', { name: 'Branding' });
   }
 
-  get aiTab() {
-    return this.page.getByRole('button', { name: 'AI Configuration' });
-  }
-
-  get advancedTab() {
-    return this.page.getByRole('button', { name: 'Advanced' });
+  get ragSettingsTab() {
+    return this.page.getByRole('button', { name: 'RAG Settings' });
   }
 
   // General form fields
@@ -45,9 +50,9 @@ export class TenantSettingsPage extends BasePage {
     return this.page.locator('input[disabled]').first();
   }
 
-  // Status badge
-  get statusBadge() {
-    return this.page.locator('[class*="rounded-full"]', { hasText: /(active|provisioning|suspended|deleted)/ });
+  // Status is shown in a disabled input field, not a badge
+  get statusInput() {
+    return this.page.locator('input[disabled]').filter({ hasText: /active|provisioning|suspended|deleted/ });
   }
 
   // Save button
@@ -57,15 +62,6 @@ export class TenantSettingsPage extends BasePage {
 
   get savingButton() {
     return this.page.getByRole('button', { name: 'Saving...' });
-  }
-
-  // Delete section
-  get deleteSection() {
-    return this.page.locator('text=Delete Organization');
-  }
-
-  get deleteButton() {
-    return this.page.getByRole('button', { name: 'Delete Organization' });
   }
 
   get loadingState() {
@@ -83,7 +79,7 @@ export class TenantSettingsPage extends BasePage {
     await this.loadingState.waitFor({ state: 'hidden', timeout: 30000 });
   }
 
-  async selectTab(tabName: 'General' | 'Branding' | 'AI Configuration' | 'Advanced') {
+  async selectTab(tabName: 'General' | 'Documents' | 'Branding' | 'RAG Settings') {
     const tabButton = this.page.getByRole('button', { name: tabName });
     await tabButton.click();
   }
@@ -100,9 +96,8 @@ export class TenantSettingsPage extends BasePage {
     await this.savingButton.waitFor({ state: 'hidden' });
   }
 
-  async goBack() {
-    await this.backButton.click();
-    await this.waitForNetworkIdle();
+  async clickDelete() {
+    await this.deleteButton.click();
   }
 
   // ===== Assertions =====
@@ -120,7 +115,10 @@ export class TenantSettingsPage extends BasePage {
     await expect(tabButton).toHaveAttribute('aria-selected', 'true');
   }
 
-  async expectStatus(status: string) {
-    await expect(this.statusBadge).toContainText(status);
+  async expectHasTabs() {
+    await expect(this.generalTab).toBeVisible();
+    await expect(this.documentsTab).toBeVisible();
+    await expect(this.brandingTab).toBeVisible();
+    await expect(this.ragSettingsTab).toBeVisible();
   }
 }

@@ -60,17 +60,26 @@ export class LandingPage extends BasePage {
   }
 
   async clickTryDemo() {
-    await this.tryDemoButton.click();
+    await Promise.all([
+      this.page.waitForURL('**/demo/**'),
+      this.tryDemoButton.click(),
+    ]);
     await this.waitForNetworkIdle();
   }
 
   async clickAdminPanel() {
-    await this.adminPanelButton.click();
+    await Promise.all([
+      this.page.waitForURL('**/admin**'),
+      this.adminPanelButton.click(),
+    ]);
     await this.waitForNetworkIdle();
   }
 
   async clickViewDemo() {
-    await this.viewDemoLink.click();
+    await Promise.all([
+      this.page.waitForURL('**/demo/**'),
+      this.viewDemoLink.click(),
+    ]);
     await this.waitForNetworkIdle();
   }
 

@@ -34,7 +34,10 @@ test.describe('Onboarding Flow', () => {
     await landingPage.expectLoaded();
 
     // Click Organizations link in nav
-    await landingPage.organizationsLink.click();
+    await Promise.all([
+      landingPage.page.waitForURL('**/admin/tenants**'),
+      landingPage.organizationsLink.click(),
+    ]);
     await landingPage.waitForNetworkIdle();
 
     // Should be on tenants page

@@ -302,6 +302,10 @@ async function handleStreamingResponse(
                 retrievedChunks: response.retrievedChunks,
                 tokensUsed: response.tokensUsed,
                 debug: {
+                  // Spec-required fields
+                  retrieval_ms: response.timing.retrieval_ms,
+                  llm_ms: response.timing.llm_ms,
+                  // Additional fields
                   traceId: ctx.traceId,
                   ...timer.getAllDurations(),
                   total_ms: timer.elapsed(),
@@ -426,6 +430,10 @@ async function handleNonStreamingResponse(
         retrievedChunks: response.retrievedChunks,
         tokensUsed: response.tokensUsed,
         debug: {
+          // Spec-required fields
+          retrieval_ms: response.timing.retrieval_ms,
+          llm_ms: response.timing.llm_ms,
+          // Additional fields
           traceId: ctx.traceId,
           ...timer.getAllDurations(),
           total_ms: timer.elapsed(),

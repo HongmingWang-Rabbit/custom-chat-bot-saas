@@ -99,8 +99,9 @@ OPENAI_API_KEY=sk-...
 # Logging
 LOG_LEVEL=info
 
-# Caching (optional)
-REDIS_URL=redis://localhost:6379
+# Caching via Upstash (optional)
+UPSTASH_REDIS_REST_URL=https://your-db.upstash.io
+UPSTASH_REDIS_REST_TOKEN=your-token
 RAG_CACHE_TTL_SECONDS=3600
 ```
 

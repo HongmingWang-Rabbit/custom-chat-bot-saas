@@ -624,12 +624,13 @@ export class RAGCacheService {
 
 **Environment Variables:**
 ```env
-REDIS_URL=redis://localhost:6379      # Connection string
-RAG_CACHE_TTL_SECONDS=3600            # TTL (default: 1 hour)
+UPSTASH_REDIS_REST_URL=https://your-db.upstash.io  # Upstash REST URL
+UPSTASH_REDIS_REST_TOKEN=your-token                 # Upstash REST token
+RAG_CACHE_TTL_SECONDS=3600                          # TTL (default: 1 hour)
 ```
 
 **Graceful Degradation:**
-- If Redis is not configured (`REDIS_URL` not set), caching is disabled
+- If Upstash is not configured (env vars not set), caching is disabled
 - If Redis connection fails, requests proceed without caching
 - Cache version is stored with responses; stale versions are ignored
 

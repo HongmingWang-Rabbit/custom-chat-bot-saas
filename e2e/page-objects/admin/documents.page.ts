@@ -73,7 +73,7 @@ export class DocumentsPage extends BasePage {
   }
 
   get uploadSubmitButton() {
-    return this.uploadModal.getByRole('button', { name: 'Upload' });
+    return this.uploadModal.getByRole('button', { name: 'Upload', exact: true });
   }
 
   get uploadCancelButton() {

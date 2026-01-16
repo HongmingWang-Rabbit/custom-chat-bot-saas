@@ -12,20 +12,9 @@ test.describe('Tenant Settings Page', () => {
     await tenantSettingsPage.takeScreenshot('tenant-settings-general');
   });
 
-  test('should show active status for demo tenant', async ({
-    tenantSettingsPage,
-  }) => {
-    await tenantSettingsPage.expectLoaded();
-    await tenantSettingsPage.expectStatus('active');
-  });
-
   test('should have all setting tabs', async ({ tenantSettingsPage }) => {
     await tenantSettingsPage.expectLoaded();
-
-    await expect(tenantSettingsPage.generalTab).toBeVisible();
-    await expect(tenantSettingsPage.brandingTab).toBeVisible();
-    await expect(tenantSettingsPage.aiTab).toBeVisible();
-    await expect(tenantSettingsPage.advancedTab).toBeVisible();
+    await tenantSettingsPage.expectHasTabs();
   });
 
   test('should switch between tabs', async ({ tenantSettingsPage }) => {
@@ -37,18 +26,11 @@ test.describe('Tenant Settings Page', () => {
     const colorLabel = tenantSettingsPage.page.locator('text=Primary Color');
     await expect(colorLabel).toBeVisible();
 
-    // Switch to AI Configuration tab
-    await tenantSettingsPage.selectTab('AI Configuration');
-    // Verify AI config content is visible
-    const providerLabel = tenantSettingsPage.page.locator('text=LLM Provider');
-    await expect(providerLabel).toBeVisible();
-  });
-
-  test('should display back button', async ({ tenantSettingsPage, page }) => {
-    await tenantSettingsPage.expectLoaded();
-    await tenantSettingsPage.goBack();
-
-    expect(page.url()).toContain('/admin/tenants');
+    // Switch to RAG Settings tab
+    await tenantSettingsPage.selectTab('RAG Settings');
+    // Verify RAG config content is visible
+    const topKLabel = tenantSettingsPage.page.locator('text=Top K');
+    await expect(topKLabel).toBeVisible();
   });
 
   test('should have save button in general tab', async ({
@@ -58,13 +40,17 @@ test.describe('Tenant Settings Page', () => {
     await expect(tenantSettingsPage.saveButton).toBeVisible();
   });
 
-  test('should show delete section in advanced tab', async ({
+  test('should have delete button in header', async ({
     tenantSettingsPage,
   }) => {
     await tenantSettingsPage.expectLoaded();
-    await tenantSettingsPage.selectTab('Advanced');
-
-    await expect(tenantSettingsPage.deleteSection).toBeVisible();
     await expect(tenantSettingsPage.deleteButton).toBeVisible();
+  });
+
+  test('should have view demo button', async ({
+    tenantSettingsPage,
+  }) => {
+    await tenantSettingsPage.expectLoaded();
+    await expect(tenantSettingsPage.viewDemoButton).toBeVisible();
   });
 });

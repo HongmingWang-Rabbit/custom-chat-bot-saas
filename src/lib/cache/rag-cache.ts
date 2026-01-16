@@ -48,6 +48,10 @@ export interface CacheableRAGResponse {
     embedding: number;
     completion: number;
   };
+  timing: {
+    retrieval_ms: number;
+    llm_ms: number;
+  };
 }
 
 /**
@@ -147,7 +151,7 @@ export class RAGCacheService {
         return null;
       }
 
-      const cached = await client.get(cacheKey);
+      const cached = await client.get<CachedRAGResponse>(cacheKey);
 
       if (!cached) {
         log.debug(
@@ -157,7 +161,8 @@ export class RAGCacheService {
         return null;
       }
 
-      const parsed: CachedRAGResponse = JSON.parse(cached);
+      // Upstash auto-deserializes JSON, so cached is already parsed
+      const parsed = cached;
 
       // Version check - invalidate if schema changed
       if (parsed.cacheVersion !== CACHE_VERSION) {
@@ -186,6 +191,7 @@ export class RAGCacheService {
         confidence: parsed.confidence,
         retrievedChunks: parsed.retrievedChunks,
         tokensUsed: parsed.tokensUsed,
+        timing: parsed.timing,
       };
     } catch (error) {
       log.error(
@@ -223,7 +229,7 @@ export class RAGCacheService {
         originalQuery: question,
       };
 
-      await client.setEx(cacheKey, this.config.ttlSeconds, JSON.stringify(cached));
+      await client.set(cacheKey, cached, { ex: this.config.ttlSeconds });
 
       log.debug(
         { event: 'cache_set', tenant: tenantSlug, ttl: this.config.ttlSeconds },
@@ -261,18 +267,19 @@ export class RAGCacheService {
       const pattern = getTenantKeyPattern(tenantSlug, this.config.keyPrefix);
 
       // Use SCAN to find keys (safer than KEYS for large datasets)
-      let cursor = '0';
+      let cursor = 0;
       let deletedCount = 0;
 
       do {
-        const result = await client.scan(cursor, { MATCH: pattern, COUNT: SCAN_BATCH_SIZE });
-        cursor = String(result.cursor);
+        // Upstash scan returns [cursor, keys] tuple
+        const [nextCursor, keys] = await client.scan(cursor, { match: pattern, count: SCAN_BATCH_SIZE });
+        cursor = nextCursor;
 
-        if (result.keys.length > 0) {
-          await client.del(result.keys);
-          deletedCount += result.keys.length;
+        if (keys.length > 0) {
+          await client.del(...keys);
+          deletedCount += keys.length;
         }
-      } while (cursor !== '0');
+      } while (cursor !== 0);
 
       if (deletedCount > 0) {
         log.info(

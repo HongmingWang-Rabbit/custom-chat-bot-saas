@@ -1,5 +1,5 @@
 /**
- * Tests for RAG cache service
+ * Tests for RAG cache service (Upstash)
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -11,30 +11,34 @@ import {
   type CacheableRAGResponse,
 } from '../rag-cache';
 
-// Mock Redis client
+// Mock Redis client with Upstash API
 vi.mock('../redis-client', () => {
-  let mockStore: Map<string, string> = new Map();
+  // Store data as objects (Upstash auto-serializes)
+  let mockStore: Map<string, unknown> = new Map();
 
   return {
     isRedisConfigured: vi.fn(() => true),
     getRedisClient: vi.fn(async () => ({
+      // Upstash get returns deserialized JSON directly
       get: vi.fn(async (key: string) => mockStore.get(key) ?? null),
-      setEx: vi.fn(async (key: string, _ttl: number, value: string) => {
+      // Upstash set with options { ex: ttl }
+      set: vi.fn(async (key: string, value: unknown, _options?: { ex?: number }) => {
         mockStore.set(key, value);
+        return 'OK';
       }),
-      del: vi.fn(async (keys: string | string[]) => {
-        const keysArray = Array.isArray(keys) ? keys : [keys];
-        keysArray.forEach((k) => mockStore.delete(k));
-        return keysArray.length;
+      // Upstash del accepts spread args
+      del: vi.fn(async (...keys: string[]) => {
+        keys.forEach((k) => mockStore.delete(k));
+        return keys.length;
       }),
-      scan: vi.fn(async (cursor: string, options: { MATCH: string; COUNT: number }) => {
-        const pattern = options.MATCH.replace('*', '');
+      // Upstash scan returns [cursor, keys] tuple
+      scan: vi.fn(async (cursor: number, options: { match: string; count: number }) => {
+        const pattern = options.match.replace('*', '');
         const matchingKeys = Array.from(mockStore.keys()).filter((k) =>
-          k.startsWith(pattern)
+          (k as string).startsWith(pattern)
         );
-        return { cursor: '0', keys: matchingKeys };
+        return [0, matchingKeys]; // cursor 0 means done
       }),
-      isOpen: true,
     })),
     __mockStore: mockStore,
     __clearMockStore: () => {
@@ -62,6 +66,10 @@ const sampleResponse: CacheableRAGResponse = {
   tokensUsed: {
     embedding: 10,
     completion: 50,
+  },
+  timing: {
+    retrieval_ms: 35,
+    llm_ms: 520,
   },
 };
 

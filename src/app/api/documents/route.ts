@@ -148,6 +148,7 @@ export async function POST(request: NextRequest) {
   try {
     // Create document record
     const newDoc: NewDocument = {
+      companySlug: tenantSlug,
       title,
       content,
       url,
@@ -167,6 +168,7 @@ export async function POST(request: NextRequest) {
           doc.id,
           doc.title,
           content,
+          tenantSlug,
           tenant.llmApiKey,
           tenant.ragConfig
         );
@@ -235,6 +237,7 @@ async function processDocument(
   docId: string,
   docTitle: string,
   content: string,
+  companySlug: string,
   llmApiKey: string | null,
   ragConfig: { chunkSize?: number; chunkOverlap?: number }
 ): Promise<void> {
@@ -257,6 +260,7 @@ async function processDocument(
   // 3. Store chunks with embeddings
   const chunkRecords: NewDocumentChunk[] = chunks.map((chunk, index) => ({
     docId,
+    companySlug,
     content: chunk.content,
     embedding: embeddings[index],
     chunkIndex: chunk.chunkIndex,

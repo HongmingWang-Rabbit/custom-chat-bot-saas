@@ -45,17 +45,17 @@ export class DashboardPage extends BasePage {
     });
   }
 
-  // Quick actions
+  // Quick actions - these are action cards with title and description
   get viewQALogsAction() {
-    return this.page.getByRole('link', { name: 'View Q&A Logs' });
+    return this.page.getByRole('link', { name: 'View Q&A Logs Review recent' });
   }
 
   get uploadDocumentsAction() {
-    return this.page.getByRole('link', { name: 'Upload Documents' });
+    return this.page.getByRole('link', { name: 'Upload Documents Add new' });
   }
 
   get newOrganizationAction() {
-    return this.page.getByRole('link', { name: 'New Organization' });
+    return this.page.getByRole('link', { name: 'New Organization Create a new' });
   }
 
   get recentActivitySection() {
@@ -78,17 +78,26 @@ export class DashboardPage extends BasePage {
   }
 
   async clickViewQALogs() {
-    await this.viewQALogsAction.click();
+    await Promise.all([
+      this.page.waitForURL('**/admin/review**'),
+      this.viewQALogsAction.click(),
+    ]);
     await this.waitForNetworkIdle();
   }
 
   async clickUploadDocuments() {
-    await this.uploadDocumentsAction.click();
+    await Promise.all([
+      this.page.waitForURL('**/admin/documents**'),
+      this.uploadDocumentsAction.click(),
+    ]);
     await this.waitForNetworkIdle();
   }
 
   async clickNewOrganization() {
-    await this.newOrganizationAction.click();
+    await Promise.all([
+      this.page.waitForURL('**/admin/tenants**'),
+      this.newOrganizationAction.click(),
+    ]);
     await this.waitForNetworkIdle();
   }
 

@@ -28,6 +28,24 @@ export class QAChatPage extends BasePage {
     return this.page.getByRole('link', { name: 'Admin Panel' });
   }
 
+  // ===== Navigation Actions =====
+
+  async clickHome() {
+    await Promise.all([
+      this.page.waitForURL('**/'),
+      this.homeLink.click(),
+    ]);
+    await this.waitForNetworkIdle();
+  }
+
+  async clickAdmin() {
+    await Promise.all([
+      this.page.waitForURL('**/admin**'),
+      this.adminLink.click(),
+    ]);
+    await this.waitForNetworkIdle();
+  }
+
   // Chat area
   get chatContainer() {
     return this.page.locator('[class*="rounded-2xl"][class*="border"]');

@@ -26,15 +26,13 @@ test.describe('Q&A Chat Page', () => {
   });
 
   test('should navigate to home', async ({ qaChatPage, page }) => {
-    await qaChatPage.homeLink.click();
-    await qaChatPage.waitForNetworkIdle();
+    await qaChatPage.clickHome();
     // Should navigate to the landing page (root path)
     expect(new URL(page.url()).pathname).toBe('/');
   });
 
   test('should navigate to admin', async ({ qaChatPage, page }) => {
-    await qaChatPage.adminLink.click();
-    await qaChatPage.waitForNetworkIdle();
+    await qaChatPage.clickAdmin();
     expect(page.url()).toContain('/admin');
   });
 

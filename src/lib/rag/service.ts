@@ -48,6 +48,10 @@ export interface RAGResponse {
     embedding: number;
     completion: number;
   };
+  timing: {
+    retrieval_ms: number;
+    llm_ms: number;
+  };
 }
 
 export interface RAGStreamCallbacks {
@@ -140,13 +144,15 @@ export class RAGService {
       return cached;
     }
 
-    // 2. Retrieve relevant chunks
+    // 2. Retrieve relevant chunks (track timing)
+    const retrievalStart = Date.now();
     const retrieval = await retrieveWithConfig(
       this.db,
       request.query,
       this.llmApiKey,
       this.ragConfig
     );
+    const retrievalMs = Date.now() - retrievalStart;
 
     // 3. Check if we have relevant content
     if (retrieval.chunks.length === 0) {
@@ -180,10 +186,11 @@ export class RAGService {
       score: chunk.similarity,
     }));
 
-    // 7. Generate response with LLM
+    // 7. Generate response with LLM (track timing)
     const systemPrompt = buildRAGSystemPrompt();
     const userPrompt = buildRAGUserPrompt(request.query, contexts);
 
+    const llmStart = Date.now();
     const llmResponse = await this.llm.complete(
       [
         { role: 'system', content: systemPrompt },
@@ -194,6 +201,7 @@ export class RAGService {
         temperature: 0.3,
       }
     );
+    const llmMs = Date.now() - llmStart;
 
     // 8. Parse citations from response
     const citedResponse = parseCitations(llmResponse.content, citationContext);
@@ -218,6 +226,10 @@ export class RAGService {
       tokensUsed: {
         embedding: retrieval.queryEmbeddingTokens,
         completion: llmResponse.usage.totalTokens,
+      },
+      timing: {
+        retrieval_ms: retrievalMs,
+        llm_ms: llmMs,
       },
     };
 
@@ -281,13 +293,15 @@ export class RAGService {
         return;
       }
 
-      // 2. Retrieve relevant chunks
+      // 2. Retrieve relevant chunks (track timing)
+      const retrievalStart = Date.now();
       const retrieval = await retrieveWithConfig(
         this.db,
         request.query,
         this.llmApiKey,
         this.ragConfig
       );
+      const retrievalMs = Date.now() - retrievalStart;
 
       // 3. Check if we have relevant content
       if (retrieval.chunks.length === 0) {
@@ -324,10 +338,11 @@ export class RAGService {
         score: chunk.similarity,
       }));
 
-      // 6. Stream response from LLM
+      // 6. Stream response from LLM (track timing)
       const systemPrompt = buildRAGSystemPrompt();
       const userPrompt = buildRAGUserPrompt(request.query, contexts);
 
+      const llmStart = Date.now();
       const stream = this.llm.streamComplete(
         [
           { role: 'system', content: systemPrompt },
@@ -350,6 +365,7 @@ export class RAGService {
           completionTokens = chunk.usage.totalTokens;
         }
       }
+      const llmMs = Date.now() - llmStart;
 
       // 7. Parse citations after streaming completes
       const citedResponse = parseCitations(fullResponse, citationContext);
@@ -378,6 +394,10 @@ export class RAGService {
         tokensUsed: {
           embedding: retrieval.queryEmbeddingTokens,
           completion: completionTokens,
+        },
+        timing: {
+          retrieval_ms: retrievalMs,
+          llm_ms: llmMs,
         },
       };
 
@@ -429,6 +449,10 @@ Try asking about financial performance, risk factors, company strategy, or any o
       tokensUsed: {
         embedding: embeddingTokens,
         completion: 0,
+      },
+      timing: {
+        retrieval_ms: 0,
+        llm_ms: 0,
       },
     };
   }
