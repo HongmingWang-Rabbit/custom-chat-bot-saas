@@ -18,6 +18,7 @@
 
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import crypto from 'crypto';
 import { getTenantService } from '@/lib/services/tenant-service';
 import {
   provisionSupabaseProject,
@@ -186,8 +187,7 @@ export async function POST(request: NextRequest) {
         body.slug,
         body.name,
         () => {
-          // Import and use generateSecurePassword
-          const crypto = require('crypto');
+          // Generate secure password
           const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
           const randomBytes = crypto.randomBytes(32);
           let password = '';
