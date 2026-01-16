@@ -18,8 +18,9 @@
 import { NextRequest } from 'next/server';
 import { getTenantService } from '@/lib/services/tenant-service';
 import {
-  provisionSupabaseProject,
-  ProvisioningOptions,
+  createProjectOnly,
+  checkProjectReady,
+  completeProjectSetup,
 } from '@/lib/supabase/provisioning';
 import { runTenantMigrations } from '@/lib/supabase/tenant-migrations';
 import {
@@ -82,25 +83,62 @@ export async function POST(
     const hasProjectRef = !!tenant.supabaseProjectRef;
     const hasCredentials = !!tenant.encryptedDatabaseUrl;
 
+    // Get the stored password from provisioning state (needed for all steps)
+    const provisioningState = await tenantService.getProvisioningState(slug);
+    if (!provisioningState?.dbPassword) {
+      throw new Error('No provisioning state found. Please start provisioning again.');
+    }
+
     // Step 1: Create Supabase project if not created yet
     if (!hasProjectRef) {
       log.info({ event: 'step_create_project', slug }, 'Creating Supabase project...');
 
-      // Get the stored password from provisioning state
-      const provisioningState = await tenantService.getProvisioningState(slug);
-      if (!provisioningState?.dbPassword) {
-        throw new Error('No provisioning state found. Please start provisioning again.');
+      // Create project only (fast, ~5-10s) - doesn't wait for it to be ready
+      const { projectRef, status } = await createProjectOnly(
+        slug,
+        provisioningState.dbPassword
+      );
+
+      // Save project ref immediately
+      await tenantService.updateProvisioningProjectRef(slug, projectRef);
+
+      log.info({ event: 'project_created', slug, projectRef, status }, 'Project created, initializing...');
+
+      return Response.json({
+        status: 'project_creating',
+        step: 'project_created',
+        message: 'Supabase project created, waiting for initialization...',
+        projectRef,
+        projectStatus: status,
+        debug: { traceId: ctx.traceId, total_ms: timer.elapsed() },
+      });
+    }
+
+    // Step 2: Check if project is ready and complete setup
+    if (hasProjectRef && !hasCredentials) {
+      log.info({ event: 'step_check_ready', slug, projectRef: tenant.supabaseProjectRef }, 'Checking if project is ready...');
+
+      // Check if project is ready (fast, ~1-2s)
+      const { ready, status } = await checkProjectReady(tenant.supabaseProjectRef!);
+
+      if (!ready) {
+        log.info({ event: 'project_not_ready', slug, status }, 'Project still initializing...');
+        return Response.json({
+          status: 'project_creating',
+          step: 'waiting_for_ready',
+          message: `Project initializing (status: ${status})...`,
+          projectRef: tenant.supabaseProjectRef,
+          projectStatus: status,
+          debug: { traceId: ctx.traceId, total_ms: timer.elapsed() },
+        });
       }
 
-      const options: ProvisioningOptions = {
-        dbPassword: provisioningState.dbPassword,
-        onProjectCreated: async (projectRef) => {
-          await tenantService.updateProvisioningProjectRef(slug, projectRef);
-        },
-      };
-
-      // This creates the project and waits for it to be ready
-      const credentials = await provisionSupabaseProject(slug, options);
+      // Project is ready - complete setup (get keys, create bucket, ~5-10s)
+      log.info({ event: 'step_complete_setup', slug }, 'Project ready, completing setup...');
+      const credentials = await completeProjectSetup(
+        tenant.supabaseProjectRef!,
+        provisioningState.dbPassword
+      );
 
       // Store credentials
       await tenantService.updateProvisioningCredentials(slug, {
@@ -110,16 +148,18 @@ export async function POST(
         databaseHost: `${credentials.projectRef}.supabase.co`,
       });
 
+      log.info({ event: 'setup_complete', slug }, 'Project setup complete, ready for migrations');
+
       return Response.json({
         status: 'project_ready',
-        step: 'project_created',
-        message: 'Supabase project created and ready',
+        step: 'setup_complete',
+        message: 'Supabase project ready, credentials stored',
         projectRef: credentials.projectRef,
         debug: { traceId: ctx.traceId, total_ms: timer.elapsed() },
       });
     }
 
-    // Step 2: Run migrations if project exists (credentials stored)
+    // Step 3: Run migrations if credentials exist
     if (hasCredentials) {
       log.info({ event: 'step_migrations', slug }, 'Running migrations...');
 

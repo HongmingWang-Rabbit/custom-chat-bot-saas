@@ -223,7 +223,7 @@ function CreateTenantModal({
       }
 
       // Step 2: Poll continue endpoint until complete
-      setProvisioningStatus('Creating Supabase project (this may take 1-3 minutes)...');
+      setProvisioningStatus('Creating Supabase project...');
 
       let attempts = 0;
       const maxAttempts = 60; // 5 minutes max (5s intervals)
@@ -247,10 +247,14 @@ function CreateTenantModal({
         }
 
         // Update status based on step
-        if (result.step === 'project_created') {
-          setProvisioningStatus('Running database migrations...');
+        if (result.status === 'project_creating') {
+          if (result.step === 'project_created') {
+            setProvisioningStatus('Project created, waiting for initialization (1-3 min)...');
+          } else if (result.step === 'waiting_for_ready') {
+            setProvisioningStatus(`Initializing project (${result.projectStatus || 'COMING_UP'})...`);
+          }
         } else if (result.status === 'project_ready') {
-          setProvisioningStatus('Project ready, running migrations...');
+          setProvisioningStatus('Project ready, running database migrations...');
         }
 
         // Wait before next poll

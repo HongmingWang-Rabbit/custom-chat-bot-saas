@@ -12,7 +12,7 @@
  */
 
 import crypto from 'crypto';
-import { createStorageBucket, DEFAULT_BUCKET_NAME } from './storage-setup';
+import { createStorageBucket } from './storage-setup';
 import { logger } from '@/lib/logger';
 
 // Create a child logger for provisioning
@@ -598,4 +598,83 @@ export async function listSupabaseProjects(): Promise<ProjectStatus[]> {
   validateProvisioningCredentials();
 
   return supabaseApi<ProjectStatus[]>('/projects');
+}
+
+// =============================================================================
+// Step-by-Step Provisioning (for frontend polling)
+// =============================================================================
+
+/**
+ * Step 1: Create a Supabase project (fast, ~5-10s).
+ * Returns the project ref immediately after creation starts.
+ * The project will be in COMING_UP status.
+ */
+export async function createProjectOnly(
+  tenantSlug: string,
+  dbPassword: string,
+  region?: string
+): Promise<{ projectRef: string; status: string }> {
+  validateProvisioningCredentials();
+
+  const project = await createProject(tenantSlug, dbPassword, region);
+  return {
+    projectRef: project.ref,
+    status: project.status,
+  };
+}
+
+/**
+ * Step 2: Check if a Supabase project is ready.
+ * Returns the current status.
+ */
+export async function checkProjectReady(projectRef: string): Promise<{
+  ready: boolean;
+  status: string;
+}> {
+  validateProvisioningCredentials();
+
+  const status = await getProjectStatus(projectRef);
+  return {
+    ready: status.status === 'ACTIVE_HEALTHY',
+    status: status.status,
+  };
+}
+
+/**
+ * Step 3: Complete project setup after it's ready.
+ * Gets API keys, pooler config, and creates storage bucket.
+ * This is fast (~5-10s) since the project is already ready.
+ */
+export async function completeProjectSetup(
+  projectRef: string,
+  dbPassword: string
+): Promise<SupabaseCredentials> {
+  validateProvisioningCredentials();
+
+  log.info({ event: 'complete_setup_start', projectRef }, 'Completing project setup');
+
+  // Get API keys
+  const { anonKey, serviceKey } = await getProjectApiKeys(projectRef);
+
+  // Get pooler configuration
+  const poolerConfig = await getPoolerConfig(projectRef);
+
+  // Build database URLs
+  const databaseUrl = buildPoolerDatabaseUrl(poolerConfig, dbPassword);
+  const directDatabaseUrl = buildDirectDatabaseUrl(projectRef, dbPassword);
+
+  // Create storage bucket
+  const storageBucket = await createStorageBucket(projectRef, serviceKey);
+
+  log.info({ event: 'complete_setup_done', projectRef }, 'Project setup complete');
+
+  return {
+    projectRef,
+    databaseUrl,
+    directDatabaseUrl,
+    serviceKey,
+    anonKey,
+    apiUrl: `https://${projectRef}.supabase.co`,
+    storageBucketName: storageBucket.bucketName,
+  };
 }
