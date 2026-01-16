@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
     timer.mark('supabase_provision');
     log.info({ event: 'supabase_provisioning' }, 'Creating Supabase project...');
 
-    const credentials = await provisionSupabaseProject(body.slug, body.region);
+    const credentials = await provisionSupabaseProject(body.slug, { region: body.region });
     timer.measure('supabase_provision');
 
     log.info(
