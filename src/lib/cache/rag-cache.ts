@@ -100,7 +100,7 @@ const SCAN_BATCH_SIZE = 100;
 function getCacheConfig(): RAGCacheConfig {
   return {
     enabled: process.env.RAG_CACHE_ENABLED !== 'false',
-    ttlSeconds: parseInt(process.env.RAG_CACHE_TTL_SECONDS || String(DEFAULT_TTL_SECONDS), 10),
+    ttlSeconds: parseInt(process.env.RAG_CACHE_TTL_SECONDS || String(DEFAULT_TTL_SECONDS), 10) || DEFAULT_TTL_SECONDS,
     keyPrefix: process.env.RAG_CACHE_KEY_PREFIX || 'rag:qa:',
   };
 }
@@ -151,6 +151,7 @@ export class RAGCacheService {
         return null;
       }
 
+      // Upstash auto-deserializes JSON
       const cached = await client.get<CachedRAGResponse>(cacheKey);
 
       if (!cached) {
@@ -161,16 +162,13 @@ export class RAGCacheService {
         return null;
       }
 
-      // Upstash auto-deserializes JSON, so cached is already parsed
-      const parsed = cached;
-
       // Version check - invalidate if schema changed
-      if (parsed.cacheVersion !== CACHE_VERSION) {
+      if (cached.cacheVersion !== CACHE_VERSION) {
         log.debug(
           {
             event: 'cache_version_mismatch',
             tenant: tenantSlug,
-            cached: parsed.cacheVersion,
+            cached: cached.cacheVersion,
             current: CACHE_VERSION,
           },
           'Cache version mismatch, treating as miss'
@@ -186,12 +184,12 @@ export class RAGCacheService {
 
       // Return response without cache metadata
       return {
-        answer: parsed.answer,
-        citations: parsed.citations,
-        confidence: parsed.confidence,
-        retrievedChunks: parsed.retrievedChunks,
-        tokensUsed: parsed.tokensUsed,
-        timing: parsed.timing,
+        answer: cached.answer,
+        citations: cached.citations,
+        confidence: cached.confidence,
+        retrievedChunks: cached.retrievedChunks,
+        tokensUsed: cached.tokensUsed,
+        timing: cached.timing,
       };
     } catch (error) {
       log.error(
@@ -267,7 +265,7 @@ export class RAGCacheService {
       const pattern = getTenantKeyPattern(tenantSlug, this.config.keyPrefix);
 
       // Use SCAN to find keys (safer than KEYS for large datasets)
-      let cursor = 0;
+      let cursor: number | string = 0;
       let deletedCount = 0;
 
       do {
@@ -279,7 +277,7 @@ export class RAGCacheService {
           await client.del(...keys);
           deletedCount += keys.length;
         }
-      } while (cursor !== 0);
+      } while (Number(cursor) !== 0);
 
       if (deletedCount > 0) {
         log.info(
@@ -307,6 +305,57 @@ export class RAGCacheService {
    */
   getConfig(): RAGCacheConfig {
     return { ...this.config };
+  }
+
+  /**
+   * Clear all RAG cache entries.
+   * Use with caution - this affects all tenants.
+   *
+   * @returns Number of keys deleted
+   */
+  async flushAll(): Promise<number> {
+    if (!this.isEnabled()) {
+      return 0;
+    }
+
+    try {
+      const client = await getRedisClient();
+      if (!client) {
+        return 0;
+      }
+
+      const pattern = `${this.config.keyPrefix}*`;
+
+      // Use SCAN to find all RAG cache keys
+      let cursor: number | string = 0;
+      let deletedCount = 0;
+
+      do {
+        const [nextCursor, keys] = await client.scan(cursor, { match: pattern, count: SCAN_BATCH_SIZE });
+        cursor = nextCursor;
+
+        if (keys.length > 0) {
+          await client.del(...keys);
+          deletedCount += keys.length;
+        }
+      } while (Number(cursor) !== 0);
+
+      log.info(
+        { event: 'cache_flush_all', deleted: deletedCount },
+        `Flushed ${deletedCount} cached responses`
+      );
+
+      return deletedCount;
+    } catch (error) {
+      log.error(
+        {
+          event: 'cache_flush_error',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'Error flushing cache'
+      );
+      return 0;
+    }
   }
 }
 

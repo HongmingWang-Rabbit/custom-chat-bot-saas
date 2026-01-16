@@ -58,7 +58,7 @@ export const tenants = pgTable('tenants', {
   // RAG configuration (JSONB)
   ragConfig: jsonb('rag_config').$type<RAGConfig>().default({
     topK: 5,
-    confidenceThreshold: 0.25, // Lower for OpenAI embeddings (cosine similarity)
+    confidenceThreshold: 0.6,
     chunkSize: 500,
     chunkOverlap: 50,
   }),

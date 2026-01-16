@@ -213,7 +213,7 @@ export const DEFAULT_BRANDING: TenantBranding = {
 
 export const DEFAULT_RAG_CONFIG: RAGConfig = {
   topK: 5,
-  confidenceThreshold: 0.25, // Lower for OpenAI embeddings (cosine similarity)
+  confidenceThreshold: 0.6,
   chunkSize: 500,
   chunkOverlap: 50,
 };

@@ -9,10 +9,14 @@ The Retrieval-Augmented Generation (RAG) pipeline combines vector similarity sea
 │                              RAG Pipeline                                    │
 │                                                                              │
 │  ┌─────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐   │
-│  │ Question│───►│  Embedding  │───►│  Retrieval  │───►│  Confidence     │   │
-│  │         │    │  Generation │    │  (pgvector) │    │  Check          │   │
+│  │ Question│───►│  HyDE       │───►│  Embedding  │───►│  Hybrid Search  │   │
+│  │         │    │  Expansion  │    │  (3072d)    │    │  (Vector + KW)  │   │
 │  └─────────┘    └─────────────┘    └─────────────┘    └────────┬────────┘   │
 │                                                                 │            │
+│                                                                 ▼            │
+│                                                        ┌─────────────────┐   │
+│                                                        │ RRF Ranking     │   │
+│                                                        └────────┬────────┘   │
 │                                    ┌────────────────────────────┼─────────┐  │
 │                                    │                            │         │  │
 │                                    ▼                            ▼         │  │
@@ -200,96 +204,188 @@ export async function generateChunkEmbeddings(
 
 ---
 
-## 2. Retrieval
+## 2. HyDE (Hypothetical Document Embeddings)
 
-### Vector Search
+HyDE improves retrieval by bridging the gap between question-style queries and statement-style documents.
 
-The `match_documents` function performs cosine similarity search:
+### How It Works
 
-```sql
--- Returns top-K most similar chunks
-SELECT
-    id,
-    doc_id,
-    content,
-    doc_title,
-    chunk_index,
-    1 - (embedding <=> query_embedding) AS similarity
-FROM document_chunks
-WHERE company_slug = 'acme-corp'
-  AND 1 - (embedding <=> query_embedding) > 0.6  -- Threshold
-ORDER BY embedding <=> query_embedding
-LIMIT 5;  -- Top K
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          HyDE Flow                                       │
+│                                                                         │
+│  Question: "What is the company's revenue?"                             │
+│      │                                                                  │
+│      ▼                                                                  │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │ GPT-4o-mini generates hypothetical answer:                       │   │
+│  │ "The company reported total revenues of $4.2 billion in fiscal   │   │
+│  │  year 2024, representing a 15% increase from the prior year."    │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│      │                                                                  │
+│      ▼                                                                  │
+│  Embed the hypothetical answer (not the question!)                      │
+│      │                                                                  │
+│      ▼                                                                  │
+│  Search for documents similar to the hypothetical answer                │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Retrieval Implementation
+### Implementation
+
+```typescript
+// src/lib/rag/hyde.ts
+
+export async function generateHypotheticalDocument(
+  query: string,
+  apiKey: string | null
+): Promise<string> {
+  const client = new OpenAI({ apiKey });
+
+  const response = await client.chat.completions.create({
+    model: 'gpt-4o-mini', // Fast and cheap for this task
+    messages: [
+      {
+        role: 'system',
+        content: `You are a helpful assistant that generates hypothetical document excerpts.
+Given a question, write a short passage (2-3 sentences) that would answer it.
+Write in a factual, document-like style as if from a company disclosure or report.
+Do NOT include phrases like "According to" or "The document states".
+Just write the content directly as if it's from the source document.`,
+      },
+      { role: 'user', content: query },
+    ],
+    max_tokens: 150,
+    temperature: 0.3,
+  });
+
+  return response.choices[0]?.message?.content?.trim() ?? query;
+}
+```
+
+### Benefits
+
+- **Semantic alignment**: Hypothetical answers are more similar to actual document passages than questions
+- **Better retrieval for abstract queries**: "What are the risks?" → generates risk-like passage
+- **Language mismatch handling**: Questions use different vocabulary than source documents
+
+---
+
+## 3. Retrieval
+
+### Hybrid Search with RRF
+
+The retrieval system combines **vector similarity** and **keyword matching** using **Reciprocal Rank Fusion (RRF)**.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     Hybrid Search Architecture                          │
+│                                                                         │
+│  Query: "What was ACME's revenue in 2024?"                              │
+│      │                                                                  │
+│      ├──────────────────────────────┬───────────────────────────────┐   │
+│      ▼                              ▼                               │   │
+│  ┌─────────────────┐         ┌─────────────────┐                    │   │
+│  │ Vector Search   │         │ Keyword Search  │                    │   │
+│  │ (3072d cosine)  │         │ (ts_rank)       │                    │   │
+│  └────────┬────────┘         └────────┬────────┘                    │   │
+│           │                           │                             │   │
+│           ▼                           ▼                             │   │
+│  ┌─────────────────┐         ┌─────────────────┐                    │   │
+│  │ Rank by         │         │ Rank by         │                    │   │
+│  │ similarity      │         │ keyword score   │                    │   │
+│  └────────┬────────┘         └────────┬────────┘                    │   │
+│           │                           │                             │   │
+│           └─────────────┬─────────────┘                             │   │
+│                         ▼                                           │   │
+│               ┌─────────────────┐                                   │   │
+│               │ RRF Fusion      │                                   │   │
+│               │ score = 1/(k+r1)│                                   │   │
+│               │       + 1/(k+r2)│                                   │   │
+│               └────────┬────────┘                                   │   │
+│                        ▼                                            │   │
+│               ┌─────────────────┐                                   │   │
+│               │ Top-K Results   │                                   │   │
+│               └─────────────────┘                                   │   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### RRF Formula
+
+```
+RRF_score = 1/(k + rank_vector) + 1/(k + rank_keyword)
+```
+
+Where `k=60` (standard constant that reduces impact of rank differences).
+
+### SQL Implementation
+
+```sql
+WITH vector_search AS (
+  SELECT
+    dc.id as chunk_id,
+    dc.content,
+    dc.chunk_index,
+    1 - (dc.embedding <=> query_embedding::vector) as vector_score,
+    ROW_NUMBER() OVER (ORDER BY dc.embedding <=> query_embedding::vector) as vector_rank,
+    d.id as document_id,
+    d.title as document_title,
+    d.url as document_source
+  FROM document_chunks dc
+  JOIN documents d ON dc.doc_id = d.id
+  WHERE d.status = 'ready'
+),
+keyword_search AS (
+  SELECT
+    dc.id as chunk_id,
+    ts_rank(to_tsvector('english', dc.content),
+            plainto_tsquery('english', :keywords)) as keyword_score,
+    ROW_NUMBER() OVER (
+      ORDER BY ts_rank(to_tsvector('english', dc.content),
+                       plainto_tsquery('english', :keywords)) DESC
+    ) as keyword_rank
+  FROM document_chunks dc
+  JOIN documents d ON dc.doc_id = d.id
+  WHERE d.status = 'ready'
+    AND to_tsvector('english', dc.content) @@ plainto_tsquery('english', :keywords)
+)
+SELECT
+  v.*,
+  COALESCE(k.keyword_score, 0) as keyword_score,
+  k.keyword_rank,
+  COALESCE(1.0/(60 + v.vector_rank), 0) +
+  COALESCE(1.0/(60 + k.keyword_rank), 0) as rrf_score
+FROM vector_search v
+LEFT JOIN keyword_search k ON v.chunk_id = k.chunk_id
+WHERE v.vector_score >= :confidence_threshold
+ORDER BY rrf_score DESC
+LIMIT :top_k;
+```
+
+### Configuration
 
 ```typescript
 // src/lib/rag/retrieval.ts
 
-import { createServerClient } from '@/lib/supabase/server';
-import { LLMAdapter } from '@/lib/llm/adapter';
-
-export interface RetrievedContext {
-  chunkId: string;
-  docId: string;
-  docTitle: string;
-  content: string;
-  chunkIndex: number;
-  score: number;
-}
-
-export interface RetrievalResult {
-  contexts: RetrievedContext[];
-  scores: number[];
-  retrievalMs: number;
-}
-
-export async function retrieveRelevantChunks(
-  question: string,
-  companySlug: string,
-  adapter: LLMAdapter,
-  config: { topK: number; confidenceThreshold: number }
-): Promise<RetrievalResult> {
-  const startTime = Date.now();
-
-  // 1. Generate question embedding
-  const { embedding } = await adapter.embed(question);
-
-  // 2. Vector search in Supabase
-  const supabase = createServerClient();
-
-  const { data: chunks, error } = await supabase.rpc('match_documents', {
-    query_embedding: embedding,
-    match_company_slug: companySlug,
-    match_threshold: config.confidenceThreshold,
-    match_count: config.topK,
-  });
-
-  if (error) throw new Error(`Retrieval failed: ${error.message}`);
-
-  const retrievalMs = Date.now() - startTime;
-
-  const contexts: RetrievedContext[] = (chunks || []).map((chunk: any) => ({
-    chunkId: chunk.id,
-    docId: chunk.doc_id,
-    docTitle: chunk.doc_title,
-    content: chunk.content,
-    chunkIndex: chunk.chunk_index,
-    score: chunk.similarity,
-  }));
-
-  return {
-    contexts,
-    scores: contexts.map(c => c.score),
-    retrievalMs,
-  };
-}
+const HYDE_ENABLED = true;         // Enable HyDE query expansion
+const RRF_K = 60;                  // RRF constant
+const DEFAULT_CONFIDENCE_THRESHOLD = 0.6;  // Minimum vector similarity
+const DEFAULT_TOP_K = 5;           // Number of results to return
 ```
+
+### Why Hybrid Search?
+
+| Query Type | Vector Only | Keyword Only | Hybrid |
+|------------|-------------|--------------|--------|
+| "What are the main risks?" | ✅ Good | ❌ Too broad | ✅ Good |
+| "ACME Corp revenue 2024" | ⚠️ May miss exact terms | ✅ Good for exact match | ✅ Best |
+| "CEO compensation package" | ⚠️ Semantic only | ✅ Finds exact terms | ✅ Best |
+| Abstract conceptual questions | ✅ Good | ❌ Poor | ✅ Good |
 
 ---
 
-## 3. Confidence Scoring
+## 4. Confidence Scoring
 
 ### Scoring Logic
 
@@ -340,7 +436,7 @@ export function hasSufficientContext(
 
 ---
 
-## 4. Prompt Engineering
+## 5. Prompt Engineering
 
 ### System Prompt
 
@@ -423,7 +519,7 @@ Remember:
 
 ---
 
-## 5. Citation Extraction
+## 6. Citation Extraction
 
 ### Citation Mapping
 
@@ -517,7 +613,7 @@ Based on the Annual Report, Acme Corporation reported total revenues of $4.2 bil
 
 ---
 
-## 6. Fallback Behavior
+## 7. Fallback Behavior
 
 ### When to Return Fallback
 
@@ -543,7 +639,7 @@ if (!hasSufficientContext(scores, config.confidenceThreshold) || contexts.length
 
 ---
 
-## 7. Performance Optimization
+## 8. Performance Optimization
 
 ### Redis Response Caching
 
@@ -699,7 +795,7 @@ async function processDocumentBatches(
 
 ---
 
-## 8. Metrics & Debugging
+## 9. Metrics & Debugging
 
 ### Debug Info Captured
 

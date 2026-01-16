@@ -91,8 +91,8 @@ export const documentChunks = pgTable('document_chunks', {
   companySlug: varchar('company_slug', { length: 100 }).notNull(),
   content: text('content').notNull(),
 
-  // pgvector embedding (1536 dimensions for OpenAI text-embedding-3-small)
-  embedding: vector('embedding', { dimensions: 1536 }),
+  // pgvector embedding (3072 dimensions for OpenAI text-embedding-3-large)
+  embedding: vector('embedding', { dimensions: 3072 }),
 
   // Position tracking
   chunkIndex: integer('chunk_index').notNull(),

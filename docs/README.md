@@ -75,7 +75,8 @@ docs/
 | Caching | Redis (optional, for RAG response caching) |
 | Encryption | AES-256-GCM |
 | LLM | OpenAI GPT-4o (adapter pattern) |
-| Embeddings | text-embedding-3-small (1536d) |
+| Embeddings | text-embedding-3-large (3072d) |
+| Retrieval | Hybrid search (vector + keyword) with RRF + HyDE |
 | Logging | Pino |
 | Styling | Tailwind CSS + shadcn/ui |
 | Deployment | Vercel |
@@ -133,5 +134,5 @@ Session changelogs documenting code changes:
 
 | Date | Summary |
 |------|---------|
-| [2026-01-16](./edit-history/2026-01-16-session.md) | Provisioning fix, async provisioning, hard delete, Q&A AI analysis, document components refactor |
+| [2026-01-16](./edit-history/2026-01-16-session.md) | Provisioning fix, async provisioning, hard delete, Q&A AI analysis, document components refactor, Redis caching, HyDE + hybrid search, embedding upgrade |
 | [2026-01-15](./edit-history/2026-01-15-session.md) | Supabase provisioning, logging system, test coverage |

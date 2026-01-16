@@ -84,7 +84,7 @@ export class RAGService {
     this.llm = createLLMAdapterFromConfig('openai', llmApiKey);
     this.ragConfig = {
       topK: ragConfig.topK ?? 5,
-      confidenceThreshold: ragConfig.confidenceThreshold ?? 0.25, // Lower for OpenAI embeddings
+      confidenceThreshold: ragConfig.confidenceThreshold ?? 0.6,
       chunkSize: ragConfig.chunkSize ?? 500,
       chunkOverlap: ragConfig.chunkOverlap ?? 50,
     };

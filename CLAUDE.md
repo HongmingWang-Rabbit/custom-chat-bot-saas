@@ -85,7 +85,8 @@ npx tsx scripts/update-document-urls.ts  # Update document URLs in DB
 | `src/lib/services/tenant-service.ts` | Tenant CRUD, credential encryption/decryption, connection pooling, hard delete |
 | `src/lib/services/storage-service.ts` | Supabase Storage upload/download, signed URLs |
 | `src/lib/rag/service.ts` | RAG pipeline orchestration: retrieve → rerank → prompt → generate (with caching) |
-| `src/lib/rag/retrieval.ts` | pgvector similarity search (default threshold: 0.25) |
+| `src/lib/rag/retrieval.ts` | Hybrid search (vector + keyword) with RRF ranking |
+| `src/lib/rag/hyde.ts` | HyDE (Hypothetical Document Embeddings) for query expansion |
 | `src/lib/rag/citations.ts` | Parse [Citation N] references from LLM response |
 | `src/lib/cache/` | Redis-based RAG response caching (per-tenant, 1hr TTL) |
 | `src/lib/llm/adapter.ts` | Abstract LLM interface for provider switching |
@@ -108,15 +109,15 @@ POST /api/qa
          │ (miss)
          ▼
 ┌─────────────────┐
-│ Embed question  │ (OpenAI text-embedding-3-small)
+│ HyDE expansion  │ (generate hypothetical answer with gpt-4o-mini)
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ Vector search   │ (pgvector cosine similarity, filtered by tenant)
+│ Embed text      │ (OpenAI text-embedding-3-large, 3072 dims)
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ Rerank chunks   │ (term matching boost)
+│ Hybrid search   │ (vector + keyword with RRF ranking)
 └────────┬────────┘
          ▼
 ┌─────────────────┐

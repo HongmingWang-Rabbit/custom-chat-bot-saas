@@ -272,9 +272,9 @@ async function generateEmbeddings(
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
     const response = await client.embeddings.create({
-      model: 'text-embedding-3-small',
+      model: 'text-embedding-3-large',
       input: batch,
-      dimensions: 1536,
+      dimensions: 3072,
     });
 
     const sortedData = response.data.sort((a, b) => a.index - b.index);
@@ -386,7 +386,7 @@ async function seed() {
         database_region VARCHAR(50),
         branding JSONB DEFAULT '{"primaryColor":"#3B82F6","secondaryColor":"#1E40AF","backgroundColor":"#FFFFFF","textColor":"#1F2937","accentColor":"#10B981","fontFamily":"Inter, system-ui, sans-serif","borderRadius":"8px","logoUrl":null,"customCss":null}'::jsonb,
         llm_provider VARCHAR(50) DEFAULT 'openai',
-        rag_config JSONB DEFAULT '{"topK":5,"confidenceThreshold":0.25,"chunkSize":500,"chunkOverlap":50}'::jsonb,
+        rag_config JSONB DEFAULT '{"topK":5,"confidenceThreshold":0.6,"chunkSize":500,"chunkOverlap":50}'::jsonb,
         status VARCHAR(20) DEFAULT 'active',
         is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -546,9 +546,9 @@ async function seed() {
       const chunks = chunkText(doc.content);
       console.log(`    Created ${chunks.length} chunks`);
 
-      // Generate embeddings
+      // Generate embeddings with document title prepended for better context
       const embeddings = await generateEmbeddings(
-        chunks.map((c) => c.content),
+        chunks.map((c) => `Document: ${doc.title}\n\n${c.content}`),
         openaiApiKey
       );
 
@@ -590,20 +590,18 @@ async function seed() {
     console.log('\n🔍 Creating vector search index...');
     try {
       await db.execute(sql`DROP INDEX IF EXISTS idx_document_chunks_embedding`);
+      await db.execute(sql`DROP INDEX IF EXISTS idx_document_chunks_embedding_hnsw`);
       await db.execute(sql`
         CREATE INDEX idx_document_chunks_embedding
         ON document_chunks USING ivfflat (embedding vector_cosine_ops)
         WITH (lists = 10)
       `);
       console.log('  ✓ IVFFlat index created');
-    } catch (error) {
-      console.log('  ⚠ Could not create IVFFlat index (may need more data)');
-      // Fall back to HNSW which doesn't require training
-      await db.execute(sql`
-        CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_hnsw
-        ON document_chunks USING hnsw (embedding vector_cosine_ops)
-      `);
-      console.log('  ✓ HNSW index created as fallback');
+    } catch {
+      // IVFFlat needs sufficient data, HNSW limited to 2000 dimensions
+      // For small datasets or high dimensions, sequential scan is fine
+      console.log('  ⚠ Vector index skipped (small dataset or high dimensions)');
+      console.log('  ℹ Queries will use sequential scan, which is fine for small data');
     }
 
     // =========================================================================
@@ -628,5 +626,15 @@ async function seed() {
 
 seed().catch((error) => {
   console.error('\n❌ Seed failed:', error.message);
+  if (error.cause) {
+    console.error('Cause:', error.cause);
+  }
+  if (error.code) {
+    console.error('Code:', error.code);
+  }
+  if (error.detail) {
+    console.error('Detail:', error.detail);
+  }
+  console.error('Stack:', error.stack);
   process.exit(1);
 });

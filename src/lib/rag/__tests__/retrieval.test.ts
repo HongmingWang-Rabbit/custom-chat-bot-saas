@@ -8,10 +8,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../embeddings', () => ({
   createEmbeddingService: vi.fn(() => ({
     embed: vi.fn().mockResolvedValue({
-      embedding: Array(1536).fill(0.1),
+      embedding: Array(3072).fill(0.1),
       tokens: 10,
     }),
   })),
+}));
+
+vi.mock('../hyde', () => ({
+  generateHypotheticalDocument: vi.fn().mockResolvedValue('hypothetical document text'),
 }));
 
 import {
@@ -28,12 +32,17 @@ import { createEmbeddingService } from '../embeddings';
 // Mock Data
 // =============================================================================
 
+// Mock data now includes RRF fields (vector_rank, keyword_rank, rrf_score)
 const mockChunkRows = [
   {
     chunk_id: 'chunk-1',
     content: 'This is the first chunk about machine learning.',
     chunk_index: 0,
-    similarity: 0.92,
+    vector_score: '0.92',
+    vector_rank: '1',
+    keyword_score: '0.5',
+    keyword_rank: '1',
+    rrf_score: '0.0328', // Max RRF score (rank 1 in both)
     document_id: 'doc-1',
     document_title: 'ML Guide',
     document_source: 'https://example.com/ml',
@@ -42,7 +51,11 @@ const mockChunkRows = [
     chunk_id: 'chunk-2',
     content: 'Second chunk about neural networks and deep learning.',
     chunk_index: 1,
-    similarity: 0.85,
+    vector_score: '0.85',
+    vector_rank: '2',
+    keyword_score: '0.3',
+    keyword_rank: '2',
+    rrf_score: '0.0320',
     document_id: 'doc-1',
     document_title: 'ML Guide',
     document_source: 'https://example.com/ml',
@@ -51,16 +64,32 @@ const mockChunkRows = [
     chunk_id: 'chunk-3',
     content: 'Third chunk about data preprocessing techniques.',
     chunk_index: 2,
-    similarity: 0.65,
+    vector_score: '0.65',
+    vector_rank: '3',
+    keyword_score: '0.1',
+    keyword_rank: '3',
+    rrf_score: '0.0312',
     document_id: 'doc-2',
     document_title: 'Data Science Handbook',
     document_source: null,
   },
 ];
 
-const createMockDb = (rows: typeof mockChunkRows = mockChunkRows) => ({
-  execute: vi.fn().mockResolvedValue(rows),
-});
+// Mock DB needs to return count for first query, then chunks for second
+const createMockDb = (rows: typeof mockChunkRows = mockChunkRows) => {
+  let callCount = 0;
+  return {
+    execute: vi.fn().mockImplementation(() => {
+      callCount++;
+      // First call is the count query
+      if (callCount === 1) {
+        return Promise.resolve([{ count: '10' }]);
+      }
+      // Second call is the main hybrid search query
+      return Promise.resolve(rows);
+    }),
+  };
+};
 
 // =============================================================================
 // retrieveChunks Tests
@@ -84,10 +113,11 @@ describe('retrieveChunks', () => {
   });
 
   it('should filter chunks below confidence threshold', async () => {
+    // RRF scores: max ~0.0328 normalizes to 1.0, so 0.02 normalizes to ~0.61
     const db = createMockDb([
-      { ...mockChunkRows[0], similarity: 0.9 },
-      { ...mockChunkRows[1], similarity: 0.5 }, // Below default threshold
-      { ...mockChunkRows[2], similarity: 0.3 }, // Below default threshold
+      { ...mockChunkRows[0], rrf_score: '0.0328' }, // Normalizes to ~1.0
+      { ...mockChunkRows[1], rrf_score: '0.015' },  // Normalizes to ~0.46, below 0.6
+      { ...mockChunkRows[2], rrf_score: '0.010' },  // Normalizes to ~0.30, below 0.6
     ]);
 
     const result = await retrieveChunks(db as any, 'query', null, {
@@ -95,7 +125,8 @@ describe('retrieveChunks', () => {
     });
 
     expect(result.chunks).toHaveLength(1);
-    expect(result.chunks[0].similarity).toBe(0.9);
+    // Normalized RRF score should be ~1.0 (0.0328 / 0.0328)
+    expect(result.chunks[0].similarity).toBeCloseTo(1.0, 1);
   });
 
   it('should respect topK option', async () => {

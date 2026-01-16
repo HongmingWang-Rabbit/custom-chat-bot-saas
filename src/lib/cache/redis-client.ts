@@ -20,10 +20,14 @@ const log = logger.child({ layer: 'cache', service: 'RedisClient' });
 // Constants
 // =============================================================================
 
-/** Default timeout for Redis commands (ms) - used for reference, Upstash handles internally */
+/** Default timeout for Redis commands (ms) - reference value, Upstash handles internally */
 export const DEFAULT_COMMAND_TIMEOUT_MS = 3000;
 
-// Legacy constants kept for backward compatibility with tests
+/**
+ * Legacy constants for reconnection strategy.
+ * @deprecated These are not used by Upstash REST client (which handles retries internally).
+ * Kept for test compatibility only - tests verify backoff calculation formulas.
+ */
 export const DEFAULT_CONNECT_TIMEOUT_MS = 5000;
 export const MAX_RECONNECT_DELAY_MS = 30000;
 export const RECONNECT_BACKOFF_BASE_MS = 100;
