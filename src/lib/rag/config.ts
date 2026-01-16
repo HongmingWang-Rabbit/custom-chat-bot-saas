@@ -48,8 +48,9 @@ export const FIRST_PASS_TOP_K = 50;
 /**
  * Enable two-pass retrieval for better document coverage.
  * First pass finds relevant documents, second pass gets best chunks from each.
+ * Disable with TWO_PASS_RETRIEVAL_ENABLED=false.
  */
-export const TWO_PASS_RETRIEVAL_ENABLED = true;
+export const TWO_PASS_RETRIEVAL_ENABLED = process.env.TWO_PASS_RETRIEVAL_ENABLED !== 'false';
 
 /**
  * Enable document summarization for broad questions.
@@ -66,6 +67,12 @@ export const SUMMARY_MAX_TOKENS = 300;
  * Temperature for summary generation.
  */
 export const SUMMARY_TEMPERATURE = 0.3;
+
+/**
+ * Maximum concurrent summarization requests.
+ * Limits parallel LLM calls to avoid rate limiting.
+ */
+export const SUMMARY_MAX_CONCURRENT = 3;
 
 /**
  * RRF (Reciprocal Rank Fusion) constant.

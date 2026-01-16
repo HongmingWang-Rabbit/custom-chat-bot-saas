@@ -101,6 +101,9 @@ export class RAGService {
     this.db = db;
     this.llmApiKey = llmApiKey;
     this.llm = createLLMAdapterFromConfig('openai', llmApiKey);
+    this.tenantSlug = tenantSlug;
+    this.cacheService = getRAGCacheService();
+
     // Use defaults for topK and confidenceThreshold to ensure new retrieval system works
     // Tenant config can override chunk settings but not retrieval params (for now)
     this.ragConfig = {
@@ -109,8 +112,26 @@ export class RAGService {
       chunkSize: ragConfig.chunkSize ?? DEFAULT_CHUNK_SIZE,
       chunkOverlap: ragConfig.chunkOverlap ?? DEFAULT_CHUNK_OVERLAP,
     };
-    this.tenantSlug = tenantSlug;
-    this.cacheService = getRAGCacheService();
+
+    // Log when tenant-provided retrieval params are being overridden
+    const overrides: string[] = [];
+    if (ragConfig.topK !== undefined && ragConfig.topK !== DEFAULT_TOP_K) {
+      overrides.push(`topK: ${ragConfig.topK} -> ${DEFAULT_TOP_K}`);
+    }
+    if (ragConfig.confidenceThreshold !== undefined && ragConfig.confidenceThreshold !== DEFAULT_CONFIDENCE_THRESHOLD) {
+      overrides.push(`confidenceThreshold: ${ragConfig.confidenceThreshold} -> ${DEFAULT_CONFIDENCE_THRESHOLD}`);
+    }
+    if (overrides.length > 0) {
+      log.info(
+        {
+          event: 'config_override',
+          tenant: tenantSlug,
+          overrides,
+          reason: 'Using default retrieval params for two-pass retrieval system',
+        },
+        `Tenant config values overridden: ${overrides.join(', ')}`
+      );
+    }
   }
 
   /**
@@ -375,21 +396,49 @@ export class RAGService {
         return;
       }
 
-      // 4. Rerank and build context
+      // 4. Rerank chunks for better relevance
       const rankedChunks = rerankChunks(retrieval.chunks, request.query);
+
+      // 5. Check if this is a broad question that benefits from summarization
+      const useSummarization = SUMMARIZATION_ENABLED && isBroadQuestion(request.query);
+      let summaries: DocumentSummary[] = [];
+      let summaryTokens = 0;
+
+      if (useSummarization) {
+        log.info({ event: 'using_summarization_stream', query: request.query }, 'Broad question detected, using summarization');
+        const summaryResult = await summarizeDocuments(rankedChunks, request.query, this.llmApiKey);
+        summaries = summaryResult.summaries;
+        summaryTokens = summaryResult.tokensUsed;
+      }
+
+      // 6. Build citation context (for citation parsing later)
       const citationContext = buildCitationContext(rankedChunks);
 
-      // 5. Convert to prompt format
-      const contexts = rankedChunks.map((chunk) => ({
-        chunkId: chunk.id,
-        docId: chunk.document.id,
-        docTitle: chunk.document.title,
-        content: chunk.content,
-        chunkIndex: chunk.chunkIndex,
-        score: chunk.similarity,
-      }));
+      // 7. Convert to prompt format (use summaries or raw chunks)
+      let contexts;
+      if (useSummarization && summaries.length > 0) {
+        // Use document summaries for broad questions
+        contexts = summaries.map((summary) => ({
+          chunkId: summary.documentId,
+          docId: summary.documentId,
+          docTitle: summary.documentTitle,
+          content: summary.summary,
+          chunkIndex: 0,
+          score: summary.confidence,
+        }));
+      } else {
+        // Use raw chunks for specific questions
+        contexts = rankedChunks.map((chunk) => ({
+          chunkId: chunk.id,
+          docId: chunk.document.id,
+          docTitle: chunk.document.title,
+          content: chunk.content,
+          chunkIndex: chunk.chunkIndex,
+          score: chunk.similarity,
+        }));
+      }
 
-      // 6. Stream response from LLM (track timing)
+      // 8. Stream response from LLM (track timing)
       callbacks.onStatus?.('generating');
       const systemPrompt = buildRAGSystemPrompt();
       const userPrompt = buildRAGUserPrompt(request.query, contexts);
@@ -419,14 +468,17 @@ export class RAGService {
       }
       const llmMs = Date.now() - llmStart;
 
-      // 7. Parse citations after streaming completes
-      const citedResponse = parseCitations(fullResponse, citationContext);
+      // 9. Parse citations after streaming completes
+      // For summarization, map document-level citations back to chunks
+      const citedResponse = useSummarization
+        ? this.parseSummaryCitations(fullResponse, summaries, rankedChunks)
+        : parseCitations(fullResponse, citationContext);
       const overallConfidence = calculateOverallConfidence(citedResponse.citations);
 
       // Send citations
       callbacks.onCitations?.(citedResponse.citations);
 
-      // 8. Log interaction
+      // 10. Log interaction
       await this.logInteraction({
         query: request.query,
         answer: fullResponse,
@@ -445,7 +497,7 @@ export class RAGService {
         retrievedChunks: rankedChunks.length,
         tokensUsed: {
           embedding: retrieval.queryEmbeddingTokens,
-          completion: completionTokens,
+          completion: completionTokens + summaryTokens,
         },
         timing: {
           retrieval_ms: retrievalMs,
@@ -453,10 +505,10 @@ export class RAGService {
         },
       };
 
-      // 9. Cache the response for future queries
+      // 11. Cache the response for future queries
       await this.cacheService.set(request.tenantSlug, request.query, response);
 
-      // 10. Complete callback
+      // 12. Complete callback
       callbacks.onComplete?.(response);
     } catch (error) {
       callbacks.onError?.(error instanceof Error ? error : new Error(String(error)));

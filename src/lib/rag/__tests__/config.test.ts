@@ -22,11 +22,11 @@ describe('RAG Config Default Values', () => {
 
   describe('retrieval configuration', () => {
     it('should have correct DEFAULT_TOP_K', () => {
-      expect(config.DEFAULT_TOP_K).toBe(5);
+      expect(config.DEFAULT_TOP_K).toBe(25);
     });
 
     it('should have correct DEFAULT_CONFIDENCE_THRESHOLD', () => {
-      expect(config.DEFAULT_CONFIDENCE_THRESHOLD).toBe(0.5);
+      expect(config.DEFAULT_CONFIDENCE_THRESHOLD).toBe(0.25);
     });
 
     it('should have correct RRF_K constant', () => {

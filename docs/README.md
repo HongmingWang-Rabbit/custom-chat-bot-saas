@@ -76,7 +76,7 @@ docs/
 | Encryption | AES-256-GCM |
 | LLM | OpenAI GPT-4o-mini (adapter pattern) |
 | Embeddings | text-embedding-3-small (1536d) |
-| Retrieval | Hybrid search (vector + keyword) with RRF + HyDE |
+| Retrieval | Two-pass hybrid search (vector + keyword) with RRF, HyDE, document summarization |
 | Logging | Pino |
 | Styling | Tailwind CSS + shadcn/ui |
 | Deployment | Vercel |
@@ -106,10 +106,11 @@ UPSTASH_REDIS_REST_TOKEN=your-token
 RAG_CACHE_TTL_SECONDS=3600
 
 # RAG feature flags (optional)
-HYDE_ENABLED=true                # Enable HyDE query expansion (default: true)
-KEYWORD_EXTRACTION_ENABLED=true  # Enable LLM keyword extraction (default: true)
-RETRIEVAL_DEBUG=false            # Enable retrieval diagnostics (default: false)
-HYDE_MODEL=gpt-4o-mini           # Model for HyDE generation
+HYDE_ENABLED=true                    # Enable HyDE query expansion (default: true)
+KEYWORD_EXTRACTION_ENABLED=true      # Enable LLM keyword extraction (default: true)
+TWO_PASS_RETRIEVAL_ENABLED=true      # Enable two-pass retrieval for document diversity (default: true)
+RETRIEVAL_DEBUG=false                # Enable retrieval diagnostics (default: false)
+HYDE_MODEL=gpt-4o-mini               # Model for HyDE generation
 ```
 
 ---
@@ -140,5 +141,5 @@ Session changelogs documenting code changes:
 
 | Date | Summary |
 |------|---------|
-| [2026-01-16](./edit-history/2026-01-16-session.md) | Provisioning fix, async provisioning, hard delete, Q&A AI analysis, document components refactor, Redis caching, HyDE + hybrid search, centralized RAG config, parallel async optimization |
+| [2026-01-16](./edit-history/2026-01-16-session.md) | Provisioning fix, async provisioning, hard delete, Q&A AI analysis, document components refactor, Redis caching, HyDE + hybrid search, centralized RAG config, two-pass retrieval, document summarization, inline citation chips, loading indicators |
 | [2026-01-15](./edit-history/2026-01-15-session.md) | Supabase provisioning, logging system, test coverage |

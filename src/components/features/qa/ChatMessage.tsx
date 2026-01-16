@@ -9,6 +9,16 @@ import { useMemo, ReactNode } from 'react';
  */
 
 // =============================================================================
+// Constants
+// =============================================================================
+
+/** Maximum length for citation display name before truncation */
+const CITATION_MAX_DISPLAY_LENGTH = 16;
+
+/** Length to truncate citation display name to (with ellipsis) */
+const CITATION_TRUNCATE_LENGTH = 13;
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -37,79 +47,120 @@ export interface ChatMessageProps {
 
 /**
  * Parse content and replace [Citation N] with clickable chips.
+ * Deduplicates citations within the same paragraph.
+ *
+ * @param content - The text content containing [Citation N] markers
+ * @param citations - Array of citation data to map markers to
+ * @returns React nodes with citation markers replaced by clickable chips
  */
 function renderContentWithCitations(
   content: string,
   citations: CitationData[] | undefined
 ): ReactNode {
+  // Return plain content if no citations
   if (!citations || citations.length === 0) {
     return content;
   }
 
-  // Build a map from citation number to citation data
-  const citationMap = new Map<number, CitationData>();
-  citations.forEach((c) => {
-    const id = typeof c.id === 'string' ? parseInt(c.id, 10) : c.id;
-    citationMap.set(id, c);
-  });
+  try {
+    // Build a map from citation number to citation data
+    const citationMap = new Map<number, CitationData>();
+    citations.forEach((c) => {
+      const id = typeof c.id === 'string' ? parseInt(c.id, 10) : c.id;
+      if (!isNaN(id)) {
+        citationMap.set(id, c);
+      }
+    });
 
-  // Match [Citation N] pattern
-  const regex = /\[Citation\s*(\d+)\]/gi;
-  const parts: ReactNode[] = [];
-  let lastIndex = 0;
-  let match;
+    // Split content into paragraphs, process each, then rejoin
+    const paragraphs = content.split(/(\n\n+)/);
 
-  while ((match = regex.exec(content)) !== null) {
-    // Add text before the citation
-    if (match.index > lastIndex) {
-      parts.push(content.slice(lastIndex, match.index));
-    }
+    const processedParagraphs = paragraphs.map((paragraph, paragraphIndex) => {
+      // If this is a separator (newlines), just return it
+      if (/^\n+$/.test(paragraph)) {
+        return paragraph;
+      }
 
-    const citationNum = parseInt(match[1], 10);
-    const citation = citationMap.get(citationNum);
+      // Track which document titles have been shown in this paragraph
+      const shownDocuments = new Set<string>();
 
-    if (citation) {
-      // Truncate long file names
-      const displayName = citation.documentTitle.length > 16
-        ? citation.documentTitle.slice(0, 13) + '...'
-        : citation.documentTitle;
+      // Match [Citation N] pattern
+      const regex = /\[Citation\s*(\d+)\]/gi;
+      const parts: ReactNode[] = [];
+      let lastIndex = 0;
+      let match;
 
-      parts.push(
-        citation.source ? (
-          <a
-            key={`citation-${match.index}`}
-            href={citation.source}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded transition cursor-pointer align-baseline"
-            title={citation.documentTitle}
-          >
-            {displayName}
-          </a>
-        ) : (
-          <span
-            key={`citation-${match.index}`}
-            className="inline-flex items-center px-1.5 py-0.5 mx-0.5 text-xs font-medium text-blue-600 bg-blue-50 rounded align-baseline"
-            title={citation.documentTitle}
-          >
-            {displayName}
-          </span>
-        )
-      );
-    } else {
-      // Keep original if citation not found
-      parts.push(match[0]);
-    }
+      while ((match = regex.exec(paragraph)) !== null) {
+        // Add text before the citation
+        if (match.index > lastIndex) {
+          parts.push(paragraph.slice(lastIndex, match.index));
+        }
 
-    lastIndex = match.index + match[0].length;
+        const citationNum = parseInt(match[1], 10);
+        const citation = citationMap.get(citationNum);
+
+        if (citation) {
+          // Check if we've already shown this document in this paragraph
+          if (shownDocuments.has(citation.documentTitle)) {
+            // Skip duplicate - don't add anything
+            lastIndex = match.index + match[0].length;
+            continue;
+          }
+
+          // Mark this document as shown
+          shownDocuments.add(citation.documentTitle);
+
+          // Truncate long file names using constants
+          const displayName = citation.documentTitle.length > CITATION_MAX_DISPLAY_LENGTH
+            ? citation.documentTitle.slice(0, CITATION_TRUNCATE_LENGTH) + '...'
+            : citation.documentTitle;
+
+          parts.push(
+            <span key={`citation-${paragraphIndex}-${match.index}`} className="relative inline-block group">
+              {citation.source ? (
+                <a
+                  href={citation.source}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-1.5 py-0.5 mx-0.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded transition cursor-pointer align-baseline"
+                >
+                  {displayName}
+                </a>
+              ) : (
+                <span className="inline-flex items-center px-1.5 py-0.5 mx-0.5 text-xs font-medium text-blue-600 bg-blue-50 rounded align-baseline">
+                  {displayName}
+                </span>
+              )}
+              {/* Tooltip showing full document title */}
+              <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50">
+                {citation.documentTitle}
+                <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800" />
+              </span>
+            </span>
+          );
+        } else {
+          // Keep original if citation not found
+          parts.push(match[0]);
+        }
+
+        lastIndex = match.index + match[0].length;
+      }
+
+      // Add remaining text
+      if (lastIndex < paragraph.length) {
+        parts.push(paragraph.slice(lastIndex));
+      }
+
+      return parts.length > 0 ? parts : paragraph;
+    });
+
+    // Flatten the array of paragraphs
+    return processedParagraphs.flat();
+  } catch (error) {
+    // If citation rendering fails, fall back to plain text
+    console.error('Failed to render citations:', error);
+    return content;
   }
-
-  // Add remaining text
-  if (lastIndex < content.length) {
-    parts.push(content.slice(lastIndex));
-  }
-
-  return parts.length > 0 ? parts : content;
 }
 
 // =============================================================================
@@ -131,6 +182,14 @@ export function ChatMessage({
   loadingStatus,
 }: ChatMessageProps) {
   const isUser = role === 'user';
+
+  // Memoize citation rendering to avoid re-computing on every render
+  const renderedContent = useMemo(() => {
+    if (isUser || isStreaming) {
+      return content;
+    }
+    return renderContentWithCitations(content, citations);
+  }, [content, citations, isUser, isStreaming]);
 
   return (
     <div
@@ -164,9 +223,7 @@ export function ChatMessage({
           }`}
         >
           <div className="prose prose-sm max-w-none whitespace-pre-wrap">
-            {isUser || isStreaming
-              ? content
-              : renderContentWithCitations(content, citations)}
+            {renderedContent}
             {isStreaming && (
               <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse rounded-sm" />
             )}

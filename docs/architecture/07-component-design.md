@@ -191,6 +191,37 @@ export function useStreamingResponse() {
 }
 ```
 
+### `useChat`
+
+Main hook for the chat interface with SSE streaming and loading status.
+
+```typescript
+// src/hooks/useChat.ts
+'use client';
+
+import type { Message, CitationData, LoadingStatus } from '@/components/features/qa';
+
+interface UseChatReturn {
+  messages: Message[];
+  isLoading: boolean;
+  loadingStatus: LoadingStatus | null;
+  error: string | null;
+  sendMessage: (content: string) => Promise<void>;
+  clearMessages: () => void;
+}
+
+export function useChat(tenantSlug: string): UseChatReturn;
+export type { LoadingStatus };
+```
+
+Features:
+- **SSE streaming**: Handles `token`, `citation`, `status`, `done`, and `error` events
+- **Loading status**: Exposes current pipeline stage (`searching`, `analyzing`, `generating`)
+- **Message history**: Maintains array of user/assistant messages
+- **Citation accumulation**: Collects citations as they stream in
+
+---
+
 ### `useCompanyTheme`
 
 Applies company branding via CSS custom properties.
@@ -446,6 +477,81 @@ function CitationCard({
   );
 }
 ```
+
+### Chat Components (New)
+
+The Q&A interface was enhanced with a chat-style UI featuring loading status indicators and inline citation chips.
+
+#### ChatContainer
+
+Main container managing chat history, streaming responses, and auto-scroll.
+
+```typescript
+// src/components/features/qa/ChatContainer.tsx
+interface ChatContainerProps {
+  tenantSlug: string;
+  primaryColor?: string;
+}
+```
+
+#### ChatMessage
+
+Renders individual messages with memoized inline citation chips. Citations like `[Citation 1]` are replaced with clickable chips that show source document and page.
+
+```typescript
+// src/components/features/qa/ChatMessage.tsx
+interface ChatMessageProps {
+  content: string;
+  isUser: boolean;
+  isStreaming?: boolean;
+  citations?: CitationData[];
+  loadingStatus?: LoadingStatus;
+}
+
+// Citation chip constants
+const CITATION_MAX_DISPLAY_LENGTH = 16;  // Max chars before truncation
+const CITATION_TRUNCATE_LENGTH = 13;     // Chars to show when truncated
+```
+
+Features:
+- **Inline citation chips**: Replace `[Citation N]` with styled chips showing document title + page
+- **Deduplication**: Same citation appearing multiple times shows same chip
+- **Error boundary**: Falls back to plain text if citation rendering fails
+- **Memoization**: `useMemo` prevents re-rendering on every state change
+
+#### LoadingIndicator
+
+Multi-stage loading status showing RAG pipeline progress:
+
+```typescript
+// src/components/features/qa/LoadingIndicator.tsx
+type LoadingStatus =
+  | 'searching'      // "Searching documents..."
+  | 'analyzing'      // "Analyzing context..."
+  | 'generating'     // "Generating response..."
+  | 'complete';
+
+interface LoadingIndicatorProps {
+  status: LoadingStatus;
+  primaryColor?: string;
+}
+```
+
+#### ChatInput
+
+Input field with suggestion chips and keyboard shortcuts:
+
+```typescript
+// src/components/features/qa/ChatInput.tsx
+interface ChatInputProps {
+  onSubmit: (message: string) => void;
+  isLoading: boolean;
+  suggestions?: string[];
+  primaryColor?: string;
+}
+```
+
+---
 
 ### QALogsTable
 
@@ -806,6 +912,11 @@ src/components/
 │
 ├── features/
 │   ├── qa/
+│   │   ├── index.ts                 # Barrel exports + shared types
+│   │   ├── ChatContainer.tsx        # Main chat container with history
+│   │   ├── ChatInput.tsx            # Input with suggestion chips
+│   │   ├── ChatMessage.tsx          # Message bubble with inline citations
+│   │   ├── LoadingIndicator.tsx     # Multi-stage loading status
 │   │   ├── question-form.tsx
 │   │   ├── answer-display.tsx
 │   │   ├── citations-list.tsx

@@ -158,11 +158,13 @@ describe('RAGService', () => {
         tenantSlug: 'test-tenant',
       });
 
+      // RAGService now always uses system default values for topK and confidenceThreshold
+      // (tenant config is overridden to ensure two-pass retrieval works correctly)
       expect(retrieveWithConfig).toHaveBeenCalledWith(
         mockDb,
         'test query',
         'sk-test-key',
-        expect.objectContaining({ topK: 5, confidenceThreshold: 0.6 })
+        expect.objectContaining({ topK: 25, confidenceThreshold: 0.25 })
       );
     });
 

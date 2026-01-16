@@ -363,6 +363,35 @@ ORDER BY rrf_score DESC
 LIMIT :top_k;
 ```
 
+### Two-Pass Retrieval
+
+The retrieval system uses a two-pass algorithm to ensure document diversity:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     Two-Pass Retrieval                                   │
+│                                                                         │
+│  Pass 1: Discover relevant documents (topK=50)                          │
+│      │                                                                  │
+│      ▼                                                                  │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │ Identify all documents with relevant chunks                      │   │
+│  │ (even if they rank lower overall)                               │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│      │                                                                  │
+│      ▼                                                                  │
+│  Pass 2: Select best chunks with diversity constraints                  │
+│      │                                                                  │
+│      ▼                                                                  │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │ - Max 5 chunks per document                                      │   │
+│  │ - Ensure at least 4 documents represented                        │   │
+│  │ - Sort by RRF score                                              │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
 ### Configuration
 
 All RAG configuration is centralized in `src/lib/rag/config.ts`:
@@ -371,9 +400,15 @@ All RAG configuration is centralized in `src/lib/rag/config.ts`:
 // src/lib/rag/config.ts
 
 // Retrieval
-export const DEFAULT_TOP_K = 5;                    // Number of results to return
-export const DEFAULT_CONFIDENCE_THRESHOLD = 0.5;   // Minimum RRF score threshold
+export const DEFAULT_TOP_K = 25;                   // Number of results to return
+export const DEFAULT_CONFIDENCE_THRESHOLD = 0.25;  // Minimum RRF score threshold
 export const RRF_K = 60;                           // RRF constant
+
+// Two-pass retrieval
+export const TWO_PASS_RETRIEVAL_ENABLED = process.env.TWO_PASS_RETRIEVAL_ENABLED !== 'false';
+export const FIRST_PASS_TOP_K = 50;               // Discover relevant documents
+export const MAX_CHUNKS_PER_DOCUMENT = 5;         // Limit per document
+export const MIN_DOCUMENTS_TO_INCLUDE = 4;        // Ensure diversity
 
 // Feature flags (from environment)
 export const HYDE_ENABLED = process.env.HYDE_ENABLED !== 'false';
@@ -384,6 +419,12 @@ export const RETRIEVAL_DEBUG = process.env.RETRIEVAL_DEBUG === 'true';
 export const HYDE_MODEL = process.env.HYDE_MODEL || 'gpt-4o-mini';
 export const HYDE_MAX_TOKENS = 150;
 export const HYDE_TEMPERATURE = 0.3;
+
+// Summarization
+export const SUMMARIZATION_ENABLED = true;
+export const SUMMARY_MAX_TOKENS = 300;
+export const SUMMARY_TEMPERATURE = 0.3;
+export const SUMMARY_MAX_CONCURRENT = 3;  // Limit concurrent LLM calls
 ```
 
 **Environment Variables for Feature Flags:**
@@ -391,6 +432,7 @@ export const HYDE_TEMPERATURE = 0.3;
 |----------|---------|-------------|
 | `HYDE_ENABLED` | `true` | Enable HyDE for query expansion |
 | `KEYWORD_EXTRACTION_ENABLED` | `true` | Enable LLM keyword extraction |
+| `TWO_PASS_RETRIEVAL_ENABLED` | `true` | Enable two-pass retrieval for document diversity |
 | `RETRIEVAL_DEBUG` | `false` | Enable verbose retrieval diagnostics |
 | `HYDE_MODEL` | `gpt-4o-mini` | Model for HyDE generation |
 
@@ -405,7 +447,65 @@ export const HYDE_TEMPERATURE = 0.3;
 
 ---
 
-## 4. Confidence Scoring
+## 4. Document Summarization
+
+For broad questions (overviews, comparisons, trends), the system summarizes documents before generating answers.
+
+### Broad Question Detection
+
+```typescript
+// src/lib/rag/summarization.ts
+
+export function isBroadQuestion(query: string): boolean {
+  const broadPatterns = [
+    /summarize/i, /overview/i, /what.*overall/i, /tell me about/i,
+    /financial.*performance/i, /key.*point/i, /main.*takeaway/i,
+    /high.*level/i, /compare/i, /trend/i, /year.*over.*year/i,
+  ];
+  return broadPatterns.some(pattern => pattern.test(query));
+}
+```
+
+### Summarization Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     Summarization Flow                                   │
+│                                                                         │
+│  "Summarize the financial performance"                                  │
+│      │                                                                  │
+│      ▼ isBroadQuestion() → true                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │ Group chunks by document                                         │   │
+│  │ [Doc 1: 3 chunks] [Doc 2: 2 chunks] [Doc 3: 4 chunks]           │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│      │                                                                  │
+│      ▼                                                                  │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │ Summarize each document (max 3 concurrent LLM calls)            │   │
+│  │ "Create 2-4 sentence summary relevant to the question"          │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│      │                                                                  │
+│      ▼                                                                  │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │ Use summaries as context for final answer                       │   │
+│  │ (instead of raw chunks)                                         │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Benefits
+
+| Query Type | Without Summarization | With Summarization |
+|------------|----------------------|-------------------|
+| "Overview of the company" | Fragmented chunks | Coherent summary |
+| "Compare Q1 and Q2" | Scattered data points | Side-by-side comparison |
+| "Financial trends" | Individual numbers | Trend narrative |
+
+---
+
+## 5. Confidence Scoring
 
 ### Scoring Logic
 

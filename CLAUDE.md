@@ -85,9 +85,10 @@ npx tsx scripts/update-document-urls.ts  # Update document URLs in DB
 | `src/lib/services/tenant-service.ts` | Tenant CRUD, credential encryption/decryption, connection pooling, hard delete |
 | `src/lib/services/storage-service.ts` | Supabase Storage upload/download, signed URLs |
 | `src/lib/rag/config.ts` | Centralized RAG configuration (60+ constants for retrieval, scoring, chunking, LLM) |
-| `src/lib/rag/service.ts` | RAG pipeline orchestration: retrieve → rerank → prompt → generate (with caching) |
-| `src/lib/rag/retrieval.ts` | Hybrid search (vector + keyword) with RRF ranking (1536 dims) |
+| `src/lib/rag/service.ts` | RAG pipeline orchestration: retrieve → rerank → summarize → prompt → generate |
+| `src/lib/rag/retrieval.ts` | Two-pass hybrid search (vector + keyword) with RRF ranking, document diversity |
 | `src/lib/rag/hyde.ts` | HyDE (Hypothetical Document Embeddings) for query expansion |
+| `src/lib/rag/summarization.ts` | Document summarization for broad questions (with concurrency limiting) |
 | `src/lib/rag/citations.ts` | Parse [Citation N] references from LLM response |
 | `src/lib/cache/` | Redis-based RAG response caching (per-tenant, 1hr TTL) |
 | `src/lib/llm/adapter.ts` | Abstract LLM interface for provider switching |
@@ -118,15 +119,21 @@ POST /api/qa
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ Hybrid search   │ (vector + keyword with RRF ranking)
+│ Two-pass search │ Pass 1: Find relevant docs (topK=50)
+│                 │ Pass 2: Select chunks ensuring document diversity
 └────────┬────────┘
          ▼
-┌─────────────────┐
-│ Generate answer │ (with citation instructions)
-└────────┬────────┘
+┌─────────────────┐     ┌─────────────────┐
+│ Broad question? │────►│ Summarize docs  │ (if yes: overview, compare, trend)
+└────────┬────────┘     └────────┬────────┘
+         │ (no)                  │
+         ▼                       ▼
+┌─────────────────────────────────────────┐
+│ Generate answer (with citation instructions) │
+└────────┬────────────────────────────────┘
          ▼
 ┌─────────────────┐
-│ Parse citations │ (map [Citation N] to actual chunks)
+│ Parse citations │ (map [Citation N] to inline chips)
 └────────┬────────┘
          ▼
 ┌─────────────────┐
@@ -177,6 +184,7 @@ Optional (Caching via Upstash):
 Optional (RAG Feature Flags):
 - `HYDE_ENABLED` - Enable HyDE query expansion (default: true, set to "false" to disable)
 - `KEYWORD_EXTRACTION_ENABLED` - Enable LLM keyword extraction (default: true)
+- `TWO_PASS_RETRIEVAL_ENABLED` - Enable two-pass retrieval for document diversity (default: true)
 - `RETRIEVAL_DEBUG` - Enable verbose retrieval diagnostics (default: false)
 - `HYDE_MODEL` - Model for HyDE generation (default: gpt-4o-mini)
 

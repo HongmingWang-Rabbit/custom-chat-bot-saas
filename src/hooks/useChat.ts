@@ -7,13 +7,14 @@
  */
 
 import { useState, useCallback, useRef } from 'react';
-import type { Message, CitationData } from '@/components/features/qa';
+import type { Message, CitationData, LoadingStatus } from '@/components/features/qa';
+
+// Re-export LoadingStatus for consumers who import from this hook
+export type { LoadingStatus };
 
 // =============================================================================
 // Types
 // =============================================================================
-
-export type LoadingStatus = 'searching' | 'generating' | null;
 
 interface UseChatOptions {
   tenantSlug: string;
@@ -114,8 +115,8 @@ export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn 
           buffer = lines.pop() || '';
 
           for (const line of lines) {
+            // Skip event type lines (we handle all events the same way via data parsing)
             if (line.startsWith('event: ')) {
-              const eventType = line.slice(7);
               continue;
             }
 

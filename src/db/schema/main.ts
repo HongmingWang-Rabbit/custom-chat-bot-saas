@@ -18,8 +18,10 @@ import { relations } from 'drizzle-orm';
 
 // Schema default values for RAG config (must match values in @/lib/rag/config.ts)
 // Defined inline to avoid circular dependency: schema -> config -> schema
-const SCHEMA_DEFAULT_TOP_K = 5;
-const SCHEMA_DEFAULT_CONFIDENCE_THRESHOLD = 0.5;
+// NOTE: These defaults are for NEW tenants. Existing tenants may have old values,
+// but RAGService overrides topK and confidenceThreshold with system defaults anyway.
+const SCHEMA_DEFAULT_TOP_K = 25;
+const SCHEMA_DEFAULT_CONFIDENCE_THRESHOLD = 0.25;
 const SCHEMA_DEFAULT_CHUNK_SIZE = 500;
 const SCHEMA_DEFAULT_CHUNK_OVERLAP = 50;
 
