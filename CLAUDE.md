@@ -62,6 +62,9 @@ npm run seed             # Seed demo data
 
 # Utilities
 npx tsx scripts/update-document-urls.ts  # Update document URLs in DB
+npx tsx scripts/migrate-embeddings.ts    # Migrate tenant embeddings to new model
+npx tsx scripts/migrate-embeddings.ts --tenant=<slug>  # Single tenant migration
+npx tsx scripts/migrate-embeddings.ts --dry-run        # Preview migration
 ```
 
 ## Architecture
@@ -120,7 +123,7 @@ POST /api/qa
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│ Embed text      │ (OpenAI text-embedding-3-small, 1536 dims)
+│ Embed text      │ (OpenAI text-embedding-3-large, 3072 dims)
 └────────┬────────┘
          ▼
 ┌─────────────────┐

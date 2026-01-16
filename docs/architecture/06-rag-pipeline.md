@@ -10,7 +10,7 @@ The Retrieval-Augmented Generation (RAG) pipeline combines vector similarity sea
 │                                                                              │
 │  ┌─────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐   │
 │  │ Question│───►│  HyDE       │───►│  Embedding  │───►│  Hybrid Search  │   │
-│  │         │    │  Expansion  │    │  (1536d)    │    │  (Vector + KW)  │   │
+│  │         │    │  Expansion  │    │  (3072d)    │    │  (Vector + KW)  │   │
 │  └─────────┘    └─────────────┘    └─────────────┘    └────────┬────────┘   │
 │                                                                 │            │
 │                                                                 ▼            │
@@ -288,7 +288,7 @@ The retrieval system combines **vector similarity** and **keyword matching** usi
 │      ▼                              ▼                               │   │
 │  ┌─────────────────┐         ┌─────────────────┐                    │   │
 │  │ Vector Search   │         │ Keyword Search  │                    │   │
-│  │ (1536d cosine)  │         │ (ts_rank)       │                    │   │
+│  │ (3072d cosine)  │         │ (ts_rank)       │                    │   │
 │  └────────┬────────┘         └────────┬────────┘                    │   │
 │           │                           │                             │   │
 │           ▼                           ▼                             │   │

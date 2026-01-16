@@ -75,7 +75,7 @@ docs/
 | Caching | Redis (optional, for RAG response caching) |
 | Encryption | AES-256-GCM |
 | LLM | OpenAI GPT-4o-mini (adapter pattern) |
-| Embeddings | text-embedding-3-small (1536d) |
+| Embeddings | text-embedding-3-large (3072d) |
 | Retrieval | Two-pass hybrid search (vector + keyword) with RRF, HyDE, document summarization |
 | Logging | Pino |
 | Styling | Tailwind CSS + shadcn/ui |
