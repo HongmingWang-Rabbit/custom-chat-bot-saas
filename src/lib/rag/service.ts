@@ -482,6 +482,7 @@ Try asking about financial performance, risk factors, company strategy, or any o
       }));
 
       const qaLog: NewQALog = {
+        companySlug: this.tenantSlug,
         question: params.query,
         answer: params.answer,
         confidence: params.confidence,

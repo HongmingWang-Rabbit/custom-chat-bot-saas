@@ -407,6 +407,7 @@ async function seed() {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS documents (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_slug VARCHAR(100) NOT NULL,
         title VARCHAR(500) NOT NULL,
         content TEXT NOT NULL,
         url VARCHAR(1000),
@@ -439,6 +440,7 @@ async function seed() {
       CREATE TABLE IF NOT EXISTS document_chunks (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         doc_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+        company_slug VARCHAR(100) NOT NULL,
         content TEXT NOT NULL,
         embedding vector(1536),
         chunk_index INTEGER NOT NULL,
@@ -464,6 +466,7 @@ async function seed() {
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS qa_logs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        company_slug VARCHAR(100) NOT NULL,
         question TEXT NOT NULL,
         answer TEXT NOT NULL,
         citations JSONB DEFAULT '[]'::jsonb,
@@ -533,8 +536,8 @@ async function seed() {
 
       // Insert document with URL for download
       const docResult = await db.execute(sql`
-        INSERT INTO documents (title, content, doc_type, url, file_name, mime_type, status)
-        VALUES (${doc.title}, ${doc.content}, ${doc.docType}, ${doc.url}, ${doc.fileName}, ${doc.mimeType}, 'processing')
+        INSERT INTO documents (company_slug, title, content, doc_type, url, file_name, mime_type, status)
+        VALUES (${TEST_TENANT.slug}, ${doc.title}, ${doc.content}, ${doc.docType}, ${doc.url}, ${doc.fileName}, ${doc.mimeType}, 'processing')
         RETURNING id
       `);
       const docId = docResult[0].id;
@@ -556,9 +559,10 @@ async function seed() {
         const embeddingStr = `[${embedding.join(',')}]`;
 
         await db.execute(sql`
-          INSERT INTO document_chunks (doc_id, content, embedding, chunk_index, start_char, end_char, doc_title, token_count)
+          INSERT INTO document_chunks (doc_id, company_slug, content, embedding, chunk_index, start_char, end_char, doc_title, token_count)
           VALUES (
             ${docId},
+            ${TEST_TENANT.slug},
             ${chunk.content},
             ${embeddingStr}::vector,
             ${chunk.chunkIndex},

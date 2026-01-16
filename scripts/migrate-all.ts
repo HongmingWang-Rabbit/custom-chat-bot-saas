@@ -255,6 +255,26 @@ const TENANT_MIGRATIONS = [
       $$;
     `,
   },
+  {
+    name: 'add_company_slug_to_documents',
+    sql: `ALTER TABLE documents ADD COLUMN IF NOT EXISTS company_slug VARCHAR(100);`,
+  },
+  {
+    name: 'add_company_slug_to_document_chunks',
+    sql: `ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS company_slug VARCHAR(100);`,
+  },
+  {
+    name: 'add_company_slug_to_qa_logs',
+    sql: `ALTER TABLE qa_logs ADD COLUMN IF NOT EXISTS company_slug VARCHAR(100);`,
+  },
+  {
+    name: 'add_company_slug_indexes',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_documents_company_slug ON documents(company_slug);
+      CREATE INDEX IF NOT EXISTS idx_document_chunks_company_slug ON document_chunks(company_slug);
+      CREATE INDEX IF NOT EXISTS idx_qa_logs_company_slug ON qa_logs(company_slug);
+    `,
+  },
 ];
 
 // =============================================================================
@@ -307,6 +327,67 @@ async function runMigrations(
       migrationsRun,
       errors,
       durationMs: Date.now() - startTime,
+    };
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * Update company_slug values for existing data in a tenant database.
+ * This ensures all rows have the correct tenant slug after migration.
+ */
+async function updateCompanySlugValues(
+  connectionString: string,
+  tenantSlug: string
+): Promise<{ updated: boolean; counts: { documents: number; chunks: number; qaLogs: number } }> {
+  const client = postgres(connectionString, {
+    max: 1,
+    idle_timeout: 20,
+    connect_timeout: 30,
+  });
+
+  try {
+    // Update documents where company_slug is NULL or placeholder
+    const docsResult = await client.unsafe(`
+      UPDATE documents
+      SET company_slug = '${tenantSlug}'
+      WHERE company_slug IS NULL OR company_slug = 'migrated'
+    `);
+    const docsUpdated = docsResult.count ?? 0;
+
+    // Update document_chunks where company_slug is NULL or placeholder
+    const chunksResult = await client.unsafe(`
+      UPDATE document_chunks
+      SET company_slug = '${tenantSlug}'
+      WHERE company_slug IS NULL OR company_slug = 'migrated'
+    `);
+    const chunksUpdated = chunksResult.count ?? 0;
+
+    // Update qa_logs where company_slug is NULL or placeholder
+    const logsResult = await client.unsafe(`
+      UPDATE qa_logs
+      SET company_slug = '${tenantSlug}'
+      WHERE company_slug IS NULL OR company_slug = 'migrated'
+    `);
+    const logsUpdated = logsResult.count ?? 0;
+
+    // Add NOT NULL constraint if not already present (idempotent)
+    try {
+      await client.unsafe(`ALTER TABLE documents ALTER COLUMN company_slug SET NOT NULL`);
+      await client.unsafe(`ALTER TABLE document_chunks ALTER COLUMN company_slug SET NOT NULL`);
+      await client.unsafe(`ALTER TABLE qa_logs ALTER COLUMN company_slug SET NOT NULL`);
+    } catch {
+      // Constraints may already exist, ignore errors
+    }
+
+    return {
+      updated: true,
+      counts: {
+        documents: Number(docsUpdated),
+        chunks: Number(chunksUpdated),
+        qaLogs: Number(logsUpdated),
+      },
     };
   } finally {
     await client.end();
@@ -435,6 +516,20 @@ async function main() {
               tenant.slug
             );
             results.push(result);
+
+            // Post-migration: Update company_slug values with actual tenant slug
+            if (result.success) {
+              try {
+                const slugUpdate = await updateCompanySlugValues(decryptedUrl, tenant.slug);
+                const totalUpdated = slugUpdate.counts.documents + slugUpdate.counts.chunks + slugUpdate.counts.qaLogs;
+                if (totalUpdated > 0) {
+                  console.log(`  │  ✓ Updated company_slug: ${slugUpdate.counts.documents} docs, ${slugUpdate.counts.chunks} chunks, ${slugUpdate.counts.qaLogs} logs`);
+                }
+              } catch (slugError) {
+                const slugMessage = slugError instanceof Error ? slugError.message : String(slugError);
+                console.log(`  │  ⚠ company_slug update warning: ${slugMessage}`);
+              }
+            }
 
             console.log(`  └─ ${result.success ? '✓ Success' : '✗ Failed'} (${result.durationMs}ms)\n`);
           } catch (error) {

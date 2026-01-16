@@ -8,6 +8,13 @@
       "when": 1768517614722,
       "tag": "0000_whole_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1768541528998,
+      "tag": "0001_flimsy_white_queen",
+      "breakpoints": true
     }
   ]
 }
