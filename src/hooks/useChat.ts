@@ -6,7 +6,7 @@
  * Manages chat state and handles streaming SSE responses from the Q&A API.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Message, CitationData, LoadingStatus } from '@/components/features/qa';
 
 // Re-export LoadingStatus for consumers who import from this hook
@@ -49,6 +49,14 @@ export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn 
   const [loadingStatus, setLoadingStatus] = useState<LoadingStatus>(null);
   const [error, setError] = useState<string | null>(null);
   const sessionIdRef = useRef<string>(generateSessionId());
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Cleanup: abort any in-flight request on unmount
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   const sendMessage = useCallback(
     async (question: string) => {
@@ -77,6 +85,10 @@ export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn 
       ]);
 
       try {
+        // Abort any previous request and create new controller
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = new AbortController();
+
         const response = await fetch('/api/qa', {
           method: 'POST',
           headers: {
@@ -88,6 +100,7 @@ export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn 
             sessionId: sessionIdRef.current,
             stream: true,
           }),
+          signal: abortControllerRef.current.signal,
         });
 
         if (!response.ok) {
@@ -152,7 +165,15 @@ export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn 
                   throw new Error(data.error);
                 }
               } catch (parseError) {
-                // Ignore parse errors for non-JSON lines
+                // Re-throw application errors (non-JSON parse errors)
+                if (
+                  parseError instanceof Error &&
+                  !parseError.message.includes('Unexpected token') &&
+                  !parseError.message.includes('JSON')
+                ) {
+                  throw parseError;
+                }
+                // Log JSON parse errors for debugging
                 if (dataStr.trim()) {
                   console.warn('Failed to parse SSE data:', dataStr);
                 }
@@ -176,6 +197,11 @@ export function useChat({ tenantSlug, onError }: UseChatOptions): UseChatReturn 
           )
         );
       } catch (err) {
+        // Ignore abort errors (expected when component unmounts or request is cancelled)
+        if (err instanceof Error && err.name === 'AbortError') {
+          return;
+        }
+
         const errorMessage =
           err instanceof Error ? err.message : 'Failed to get response';
         setError(errorMessage);

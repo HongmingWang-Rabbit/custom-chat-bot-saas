@@ -141,5 +141,5 @@ Session changelogs documenting code changes:
 
 | Date | Summary |
 |------|---------|
-| [2026-01-16](./edit-history/2026-01-16-session.md) | Provisioning fix, async provisioning, hard delete, Q&A AI analysis, document components refactor, Redis caching, HyDE + hybrid search, centralized RAG config, two-pass retrieval, document summarization, inline citation chips, loading indicators |
+| [2026-01-16](./edit-history/2026-01-16-session.md) | Provisioning fix, async provisioning, hard delete, Q&A AI analysis, document components refactor, Redis caching, HyDE + hybrid search, centralized RAG config, two-pass retrieval, document summarization, inline citation chips, loading indicators, markdown rendering, code review fixes (abort controller, error boundary), 40 new tests |
 | [2026-01-15](./edit-history/2026-01-15-session.md) | Supabase provisioning, logging system, test coverage |

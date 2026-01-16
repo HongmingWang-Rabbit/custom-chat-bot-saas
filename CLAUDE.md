@@ -19,6 +19,11 @@ After making significant code changes, update relevant documentation:
 - Adding new environment variables
 - Changing project structure
 
+## Response Formatting
+
+- **Use tables for comparisons**: When presenting options, trade-offs, or differences between items, use markdown tables to make comparisons easy to scan
+- Keep responses concise and scannable
+
 ## Project Overview
 
 Multi-tenant SaaS for RAG-powered Q&A on company disclosures. Each tenant gets an isolated Supabase database with their documents, embeddings, and Q&A logs.

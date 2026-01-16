@@ -201,24 +201,32 @@ Main hook for the chat interface with SSE streaming and loading status.
 
 import type { Message, CitationData, LoadingStatus } from '@/components/features/qa';
 
+interface UseChatOptions {
+  tenantSlug: string;
+  onError?: (error: string) => void;
+}
+
 interface UseChatReturn {
   messages: Message[];
   isLoading: boolean;
-  loadingStatus: LoadingStatus | null;
+  loadingStatus: LoadingStatus;
   error: string | null;
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (question: string) => Promise<void>;
   clearMessages: () => void;
 }
 
-export function useChat(tenantSlug: string): UseChatReturn;
+export function useChat(options: UseChatOptions): UseChatReturn;
 export type { LoadingStatus };
 ```
 
 Features:
-- **SSE streaming**: Handles `token`, `citation`, `status`, `done`, and `error` events
-- **Loading status**: Exposes current pipeline stage (`searching`, `analyzing`, `generating`)
+- **SSE streaming**: Handles `content`, `citations`, `status`, `confidence`, and `error` events
+- **Loading status**: Exposes current pipeline stage (`searching`, `generating`)
 - **Message history**: Maintains array of user/assistant messages
 - **Citation accumulation**: Collects citations as they stream in
+- **AbortController**: Cancels in-flight requests on unmount to prevent memory leaks
+- **Session management**: Auto-generates session IDs, regenerates on `clearMessages()`
+- **Error handling**: Ignores AbortError (expected on unmount), propagates application errors
 
 ---
 
@@ -496,28 +504,37 @@ interface ChatContainerProps {
 
 #### ChatMessage
 
-Renders individual messages with memoized inline citation chips. Citations like `[Citation 1]` are replaced with clickable chips that show source document and page.
+Renders individual messages with markdown rendering and inline citation chips. Citations like `[Citation 1]` are replaced with clickable chips that show source document title.
 
 ```typescript
 // src/components/features/qa/ChatMessage.tsx
 interface ChatMessageProps {
+  role: 'user' | 'assistant';
   content: string;
-  isUser: boolean;
   isStreaming?: boolean;
   citations?: CitationData[];
+  confidence?: number;
   loadingStatus?: LoadingStatus;
 }
 
 // Citation chip constants
 const CITATION_MAX_DISPLAY_LENGTH = 16;  // Max chars before truncation
 const CITATION_TRUNCATE_LENGTH = 13;     // Chars to show when truncated
+const CITATION_REGEX = /\[Citation\s*(\d+)\]|\[(\d+)\]/gi;  // Match [Citation N] and [N]
 ```
 
 Features:
-- **Inline citation chips**: Replace `[Citation N]` with styled chips showing document title + page
-- **Deduplication**: Same citation appearing multiple times shows same chip
-- **Error boundary**: Falls back to plain text if citation rendering fails
+- **Markdown rendering**: Uses `react-markdown` with custom Tailwind-styled components
+  - Headings (h1-h3), bold, italic
+  - Bullet/numbered lists
+  - Inline and fenced code blocks
+  - Blockquotes, tables, links
+- **Inline citation chips**: Replace `[Citation N]` with styled chips showing truncated document title
+- **Tooltip on hover**: Shows full document title
+- **Clickable links**: Citations with source URL open in new tab
+- **Error boundary**: `MarkdownErrorBoundary` class falls back to plain text if rendering fails
 - **Memoization**: `useMemo` prevents re-rendering on every state change
+- **Key generator factory**: `createKeyGenerator()` avoids mutable counter in render (React 18 concurrent mode compatible)
 
 #### LoadingIndicator
 
@@ -915,12 +932,14 @@ src/components/
 │   │   ├── index.ts                 # Barrel exports + shared types
 │   │   ├── ChatContainer.tsx        # Main chat container with history
 │   │   ├── ChatInput.tsx            # Input with suggestion chips
-│   │   ├── ChatMessage.tsx          # Message bubble with inline citations
+│   │   ├── ChatMessage.tsx          # Message bubble with markdown + citations
 │   │   ├── LoadingIndicator.tsx     # Multi-stage loading status
 │   │   ├── question-form.tsx
 │   │   ├── answer-display.tsx
 │   │   ├── citations-list.tsx
-│   │   └── confidence-badge.tsx
+│   │   ├── confidence-badge.tsx
+│   │   └── __tests__/
+│   │       └── ChatMessage.test.tsx # 23 tests for ChatMessage
 │   │
 │   └── admin/
 │       ├── qa-logs-table.tsx
@@ -937,4 +956,53 @@ src/components/
     ├── DocumentViewModal.tsx        # Document details viewer
     ├── DocumentEditModal.tsx        # Document metadata editor
     └── UploadModal.tsx              # File upload with drag & drop
+
+src/hooks/
+├── useChat.ts                       # SSE streaming chat hook
+└── __tests__/
+    └── useChat.test.ts              # 17 tests for useChat hook
 ```
+
+---
+
+## Component Testing
+
+Tests are co-located with components in `__tests__` folders and use Vitest with React Testing Library.
+
+### Test Setup
+
+```typescript
+// vitest.setup.ts
+import '@testing-library/jest-dom/vitest';  // Adds toBeInTheDocument(), toHaveClass(), etc.
+```
+
+For DOM tests, add the vitest environment directive:
+
+```typescript
+/**
+ * @vitest-environment jsdom
+ */
+import { render, screen } from '@testing-library/react';
+```
+
+### ChatMessage Tests (23 tests)
+
+| Category | Tests |
+|----------|-------|
+| User messages | Renders with correct styling, plain text (no markdown) |
+| Assistant messages | Renders with styling, markdown formatting (bold, italic, lists, code) |
+| Citations | [Citation N] format, [N] format, truncation, links vs spans, missing citations |
+| Streaming | Cursor visibility, loading status indicators |
+| Confidence | Green/yellow/red badges, hidden when 0 or streaming |
+| Error boundary | Fallback to plain text |
+
+### useChat Tests (17 tests)
+
+| Category | Tests |
+|----------|-------|
+| Initial state | Empty messages, not loading |
+| sendMessage | Adds user/assistant messages, loading state, ignores empty |
+| Streaming | Accumulates content, status updates, citations, confidence |
+| Error handling | Fetch errors, status codes, SSE errors, abort handling |
+| Session | clearMessages, session ID regeneration |
+| Cleanup | AbortController cancellation on unmount |

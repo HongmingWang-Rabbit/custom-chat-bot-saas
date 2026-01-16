@@ -5,6 +5,7 @@
  */
 
 import { vi } from 'vitest';
+import '@testing-library/jest-dom/vitest';
 
 // Mock environment variables for tests
 process.env.MASTER_KEY = 'dGVzdC1rZXktMzItYnl0ZXMtZm9yLXZpdGVzdCEhYWI='; // 32 bytes base64
