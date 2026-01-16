@@ -30,7 +30,8 @@ async function main() {
       LIMIT 1
     `);
 
-    const storedEmbedding = chunks[0].embedding_text
+    const chunk = chunks[0] as { content: string; embedding_text: string };
+    const storedEmbedding = chunk.embedding_text
       .slice(1, -1)
       .split(',')
       .map(Number);

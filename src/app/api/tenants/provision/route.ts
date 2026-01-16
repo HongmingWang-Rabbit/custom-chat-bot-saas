@@ -208,6 +208,7 @@ export async function POST(request: NextRequest) {
       branding: body.branding as Partial<TenantBranding>,
       ragConfig: body.ragConfig as Partial<RAGConfig>,
       status: 'provisioning', // Will be updated to 'active' after migrations
+      supabaseProjectRef: credentials.projectRef,
     });
     timer.measure('tenant_create');
 

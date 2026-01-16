@@ -422,6 +422,7 @@ export class TenantService {
     branding?: Partial<TenantBranding>;
     ragConfig?: Partial<RAGConfig>;
     status?: TenantStatus;
+    supabaseProjectRef?: string;
   }): Promise<Tenant> {
     const newTenant: NewTenant = {
       slug: params.slug,
@@ -434,6 +435,7 @@ export class TenantService {
       branding: { ...DEFAULT_BRANDING, ...params.branding },
       ragConfig: { ...DEFAULT_RAG_CONFIG, ...params.ragConfig },
       status: params.status ?? 'active',
+      supabaseProjectRef: params.supabaseProjectRef,
     };
 
     const result = await this.mainDb

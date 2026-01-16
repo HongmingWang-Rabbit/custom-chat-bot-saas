@@ -22,11 +22,11 @@ async function main() {
       LIMIT 1
     `);
 
-    const chunk = chunks[0];
+    const chunk = chunks[0] as { id: string; content: string; embedding_text: string };
     console.log('Chunk content:', chunk.content.substring(0, 100) + '...');
 
     // Parse stored embedding
-    const storedEmbedding = chunk.embedding_text
+    const storedEmbedding: number[] = chunk.embedding_text
       .slice(1, -1)
       .split(',')
       .map(Number);

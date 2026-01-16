@@ -270,7 +270,8 @@ export class RAGCacheService {
 
       do {
         // Upstash scan returns [cursor, keys] tuple
-        const [nextCursor, keys] = await client.scan(cursor, { match: pattern, count: SCAN_BATCH_SIZE });
+        const result = await client.scan(cursor, { match: pattern, count: SCAN_BATCH_SIZE });
+        const [nextCursor, keys] = result as [string | number, string[]];
         cursor = nextCursor;
 
         if (keys.length > 0) {
@@ -331,7 +332,8 @@ export class RAGCacheService {
       let deletedCount = 0;
 
       do {
-        const [nextCursor, keys] = await client.scan(cursor, { match: pattern, count: SCAN_BATCH_SIZE });
+        const result = await client.scan(cursor, { match: pattern, count: SCAN_BATCH_SIZE });
+        const [nextCursor, keys] = result as [string | number, string[]];
         cursor = nextCursor;
 
         if (keys.length > 0) {
