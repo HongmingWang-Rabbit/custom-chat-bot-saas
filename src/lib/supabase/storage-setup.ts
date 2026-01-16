@@ -122,8 +122,15 @@ async function storageApi<T>(
 // Storage Setup Functions
 // =============================================================================
 
+/** Maximum retries for storage bucket creation */
+const STORAGE_MAX_RETRIES = 10;
+
+/** Initial delay between retries (ms) */
+const STORAGE_INITIAL_DELAY = 3000;
+
 /**
  * Create a storage bucket for a tenant's project.
+ * Includes retry logic since storage service may not be ready immediately after project creation.
  *
  * @param projectRef - Supabase project reference (e.g., 'jdxhoqdnxshzbjasfhfz')
  * @param serviceKey - Service role key for the project
@@ -152,41 +159,62 @@ export async function createStorageBucket(
 
   console.log(`[Storage] Creating bucket '${bucketName}' for project ${projectRef}`);
 
-  try {
-    const bucket = await storageApi<SupabaseBucketResponse>(
-      projectRef,
-      serviceKey,
-      '/bucket',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          id: bucketName,
-          name: bucketName,
-          public: isPublic,
-          file_size_limit: fileSizeLimit,
-          allowed_mime_types: allowedMimeTypes,
-        }),
-      }
-    );
+  // Retry logic for storage service initialization
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= STORAGE_MAX_RETRIES; attempt++) {
+    try {
+      const bucket = await storageApi<SupabaseBucketResponse>(
+        projectRef,
+        serviceKey,
+        '/bucket',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            id: bucketName,
+            name: bucketName,
+            public: isPublic,
+            file_size_limit: fileSizeLimit,
+            allowed_mime_types: allowedMimeTypes,
+          }),
+        }
+      );
 
-    console.log(`[Storage] Bucket '${bucketName}' created successfully`);
+      console.log(`[Storage] Bucket '${bucketName}' created successfully`);
 
-    return {
-      bucketId: bucket.name,
-      bucketName: bucket.name,
-      isPublic: bucket.public,
-    };
-  } catch (error) {
-    if (error instanceof BucketExistsError) {
-      console.log(`[Storage] Bucket '${bucketName}' already exists`);
       return {
-        bucketId: bucketName,
-        bucketName: bucketName,
-        isPublic: isPublic,
+        bucketId: bucket.name,
+        bucketName: bucket.name,
+        isPublic: bucket.public,
       };
+    } catch (error) {
+      if (error instanceof BucketExistsError) {
+        console.log(`[Storage] Bucket '${bucketName}' already exists`);
+        return {
+          bucketId: bucketName,
+          bucketName: bucketName,
+          isPublic: isPublic,
+        };
+      }
+
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Check if this is a "tenant config not ready" error - retry with delay
+      const isTenantNotReady = lastError.message.includes('Missing tenant config') ||
+                               lastError.message.includes('tenant not found') ||
+                               lastError.message.includes('not initialized');
+
+      if (isTenantNotReady && attempt < STORAGE_MAX_RETRIES) {
+        const delay = STORAGE_INITIAL_DELAY * attempt;
+        console.log(`[Storage] Storage service not ready (attempt ${attempt}/${STORAGE_MAX_RETRIES}), retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      throw lastError;
     }
-    throw error;
   }
+
+  throw lastError || new Error('Storage bucket creation failed after retries');
 }
 
 /**
