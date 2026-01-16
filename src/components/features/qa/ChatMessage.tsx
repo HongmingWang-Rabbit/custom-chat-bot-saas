@@ -133,12 +133,16 @@ function CitationChip({
           href={citation.source}
           target="_blank"
           rel="noopener noreferrer"
+          data-testid="chat-citation"
           className="inline-flex items-center px-1.5 py-0.5 mx-0.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded transition cursor-pointer align-baseline"
         >
           {displayName}
         </a>
       ) : (
-        <span className="inline-flex items-center px-1.5 py-0.5 mx-0.5 text-xs font-medium text-blue-600 bg-blue-50 rounded align-baseline">
+        <span
+          data-testid="chat-citation"
+          className="inline-flex items-center px-1.5 py-0.5 mx-0.5 text-xs font-medium text-blue-600 bg-blue-50 rounded align-baseline"
+        >
           {displayName}
         </span>
       )}
