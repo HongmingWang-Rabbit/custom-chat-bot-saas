@@ -12,6 +12,7 @@
  */
 
 import crypto from 'crypto';
+import { createStorageBucket, DEFAULT_BUCKET_NAME } from './storage-setup';
 
 // =============================================================================
 // Configuration
@@ -31,10 +32,12 @@ const MAX_POLL_ATTEMPTS = 60; // 5 minutes max wait
 
 export interface SupabaseCredentials {
   projectRef: string;
-  databaseUrl: string;
+  databaseUrl: string;           // Pooler URL (for production use)
+  directDatabaseUrl: string;     // Direct URL (for migrations/setup)
   serviceKey: string;
   anonKey: string;
   apiUrl: string;
+  storageBucketName: string;
 }
 
 export interface ProjectStatus {
@@ -273,20 +276,58 @@ async function waitForProjectReady(projectRef: string): Promise<ProjectStatus> {
   );
 }
 
+interface PoolerConfig {
+  db_host: string;
+  db_port: number;
+  db_user: string;
+  db_name: string;
+}
+
 /**
- * Build the database connection string for a Supabase project.
+ * Get the pooler configuration for a project from the Supabase API.
+ * This ensures we use the correct pooler host.
  */
-function buildDatabaseUrl(
-  projectRef: string,
-  dbPassword: string,
-  region: string
+async function getPoolerConfig(projectRef: string): Promise<PoolerConfig> {
+  const configs = await supabaseApi<PoolerConfig[]>(
+    `/projects/${projectRef}/config/database/pooler`
+  );
+
+  // Find the PRIMARY database pooler config
+  const primaryConfig = configs.find(
+    (c: PoolerConfig & { database_type?: string }) => c.database_type === 'PRIMARY'
+  );
+
+  if (!primaryConfig) {
+    throw new Error(`No pooler config found for project ${projectRef}`);
+  }
+
+  return primaryConfig;
+}
+
+/**
+ * Build the pooler database connection string using actual API config.
+ */
+function buildPoolerDatabaseUrl(
+  poolerConfig: PoolerConfig,
+  dbPassword: string
 ): string {
-  // Supabase database connection string format
-  // pooler connection (recommended for serverless)
-  const host = `aws-0-${region}.pooler.supabase.com`;
-  const port = 6543; // Pooler port
+  return `postgresql://${poolerConfig.db_user}:${encodeURIComponent(
+    dbPassword
+  )}@${poolerConfig.db_host}:${poolerConfig.db_port}/${poolerConfig.db_name}?sslmode=require`;
+}
+
+/**
+ * Build the direct database connection string for a Supabase project.
+ * Use for initial setup/migrations (pooler may not be ready immediately).
+ */
+function buildDirectDatabaseUrl(
+  projectRef: string,
+  dbPassword: string
+): string {
+  const host = `db.${projectRef}.supabase.co`;
+  const port = 5432; // Direct connection port
   const database = 'postgres';
-  const user = `postgres.${projectRef}`;
+  const user = 'postgres';
 
   return `postgresql://${user}:${encodeURIComponent(
     dbPassword
@@ -334,8 +375,20 @@ export async function provisionSupabaseProject(
     // Get API keys
     const { anonKey, serviceKey } = await getProjectApiKeys(project.ref);
 
-    // Build the database connection string
-    const databaseUrl = buildDatabaseUrl(project.ref, dbPassword, project.region);
+    // Get pooler configuration from API (critical: host varies per project!)
+    console.log(`[Provisioning] Fetching pooler config for ${project.ref}...`);
+    const poolerConfig = await getPoolerConfig(project.ref);
+    console.log(`[Provisioning] Pooler host: ${poolerConfig.db_host}`);
+
+    // Build the database connection strings
+    // Pooler URL is for production use (connection pooling)
+    const databaseUrl = buildPoolerDatabaseUrl(poolerConfig, dbPassword);
+    // Direct URL is for migrations/setup (pooler may not be ready immediately)
+    const directDatabaseUrl = buildDirectDatabaseUrl(project.ref, dbPassword);
+
+    // Create storage bucket for documents
+    console.log(`[Provisioning] Creating storage bucket for project ${project.ref}...`);
+    const storageBucket = await createStorageBucket(project.ref, serviceKey);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(
@@ -345,9 +398,11 @@ export async function provisionSupabaseProject(
     return {
       projectRef: project.ref,
       databaseUrl,
+      directDatabaseUrl,
       serviceKey,
       anonKey,
       apiUrl: `https://${project.ref}.supabase.co`,
+      storageBucketName: storageBucket.bucketName,
     };
   } catch (error) {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
