@@ -475,7 +475,7 @@ async function main() {
       const mainDb = drizzle(mainClient);
 
       // Build query
-      let query = mainDb
+      const query = mainDb
         .select({
           slug: tenants.slug,
           name: tenants.name,

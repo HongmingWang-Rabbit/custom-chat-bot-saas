@@ -14,7 +14,7 @@ import {
 // Mock Redis client with Upstash API
 vi.mock('../redis-client', () => {
   // Store data as objects (Upstash auto-serializes)
-  let mockStore: Map<string, unknown> = new Map();
+  const mockStore: Map<string, unknown> = new Map();
 
   return {
     isRedisConfigured: vi.fn(() => true),

@@ -12,7 +12,6 @@ global.fetch = mockFetch;
 // Helper to create a mock SSE response
 function createSSEResponse(events: Array<{ event?: string; data: object }>) {
   const encoder = new TextEncoder();
-  let index = 0;
 
   const stream = new ReadableStream({
     start(controller) {
