@@ -193,7 +193,6 @@ function CreateTenantModal({
   const [formData, setFormData] = useState({
     slug: '',
     name: '',
-    llmApiKey: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [provisioningStatus, setProvisioningStatus] = useState<string | null>(null);
@@ -213,7 +212,6 @@ function CreateTenantModal({
         body: JSON.stringify({
           slug: formData.slug,
           name: formData.name,
-          llmApiKey: formData.llmApiKey || undefined,
         }),
       });
 
@@ -298,21 +296,6 @@ function CreateTenantModal({
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              OpenAI API Key <span className="text-gray-400">(optional)</span>
-            </label>
-            <input
-              type="password"
-              value={formData.llmApiKey}
-              onChange={(e) => setFormData({ ...formData, llmApiKey: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="sk-..."
-              disabled={isSubmitting}
-            />
-            <p className="mt-1 text-xs text-gray-500">Uses system default if not provided</p>
-          </div>
-
           {/* Info box */}
           <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
             <p className="font-medium text-gray-700 mb-1">What happens next:</p>
@@ -333,7 +316,7 @@ function CreateTenantModal({
                 <svg className="w-3 h-3 text-green-500" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                 </svg>
-                Vector search for Q&A ready
+                AI-powered Q&A automatically configured
               </li>
             </ul>
           </div>
