@@ -120,7 +120,7 @@ describe('runTenantMigrations', () => {
     await runTenantMigrations(testDatabaseUrl);
 
     expect(mockUnsafe).toHaveBeenCalledWith(
-      expect.stringMatching(/CREATE TABLE IF NOT EXISTS document_chunks.*embedding vector\(1536\)/s)
+      expect.stringMatching(/CREATE TABLE IF NOT EXISTS document_chunks.*embedding vector\(3072\)/s)
     );
   });
 
