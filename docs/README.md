@@ -127,4 +127,5 @@ Session changelogs documenting code changes:
 
 | Date | Summary |
 |------|---------|
+| [2026-01-16](./edit-history/2026-01-16-session.md) | Provisioning fix (pooler URL), async provisioning, tenant hard delete |
 | [2026-01-15](./edit-history/2026-01-15-session.md) | Supabase provisioning, logging system, test coverage |

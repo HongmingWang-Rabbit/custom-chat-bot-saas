@@ -31,11 +31,13 @@ import {
 } from '@/db/schema/main';
 import {
   provisionSupabaseProject,
+  deleteSupabaseProject,
   isProvisioningConfigured,
   SupabaseCredentials,
 } from '@/lib/supabase/provisioning';
 import { runTenantMigrations, MigrationResult } from '@/lib/supabase/tenant-migrations';
 import { logger } from '@/lib/logger';
+import { createStorageService, StorageService } from './storage-service';
 
 // Create a child logger for tenant service
 const log = logger.child({ layer: 'service', service: 'TenantService' });
@@ -112,6 +114,20 @@ export class TenantService {
   }
 
   /**
+   * Get tenant by slug regardless of status.
+   * Use for checking provisioning status or admin operations.
+   */
+  async getTenantAnyStatus(slug: string): Promise<Tenant | null> {
+    const result = await this.mainDb
+      .select()
+      .from(tenants)
+      .where(eq(tenants.slug, slug))
+      .limit(1);
+
+    return result[0] ?? null;
+  }
+
+  /**
    * Get tenant by ID.
    */
   async getTenantById(id: string): Promise<Tenant | null> {
@@ -176,6 +192,48 @@ export class TenantService {
   }
 
   /**
+   * Get a storage service for a tenant's Supabase Storage.
+   * Returns null if tenant not found or storage not configured.
+   */
+  async getStorageService(slug: string): Promise<StorageService | null> {
+    const tenant = await this.getTenantWithSecrets(slug);
+    if (!tenant || !tenant.serviceKey) {
+      log.warn({ event: 'storage_unavailable', slug }, 'Storage service unavailable');
+      return null;
+    }
+
+    // Extract project ref from database URL
+    // URL format: postgresql://postgres.{projectRef}:password@host:port/db
+    const projectRef = this.extractProjectRef(tenant.databaseUrl);
+    if (!projectRef) {
+      log.warn({ event: 'storage_no_project_ref', slug }, 'Cannot determine project ref');
+      return null;
+    }
+
+    const apiUrl = `https://${projectRef}.supabase.co`;
+    return createStorageService(apiUrl, tenant.serviceKey);
+  }
+
+  /**
+   * Extract Supabase project reference from database URL.
+   * Database URL username format: postgres.{projectRef}
+   */
+  private extractProjectRef(databaseUrl: string): string | null {
+    try {
+      const url = new URL(databaseUrl);
+      // Username format: postgres.{projectRef}
+      const username = url.username;
+      const parts = username.split('.');
+      if (parts.length >= 2 && parts[0] === 'postgres') {
+        return parts[1];
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * List all active tenants (without secrets).
    */
   async listTenants(): Promise<Tenant[]> {
@@ -215,6 +273,7 @@ export class TenantService {
     llmApiKey?: string;
     branding?: Partial<TenantBranding>;
     ragConfig?: Partial<RAGConfig>;
+    status?: TenantStatus;
   }): Promise<Tenant> {
     const newTenant: NewTenant = {
       slug: params.slug,
@@ -226,6 +285,7 @@ export class TenantService {
       databaseHost: this.maskHost(params.databaseUrl),
       branding: { ...DEFAULT_BRANDING, ...params.branding },
       ragConfig: { ...DEFAULT_RAG_CONFIG, ...params.ragConfig },
+      status: params.status ?? 'active',
     };
 
     const result = await this.mainDb
@@ -376,6 +436,24 @@ export class TenantService {
   }
 
   /**
+   * Update tenant status directly (for background processes).
+   * Unlike updateTenant, this works on tenants in any status.
+   */
+  async updateTenantStatus(slug: string, status: TenantStatus): Promise<Tenant | null> {
+    const result = await this.mainDb
+      .update(tenants)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(tenants.slug, slug))
+      .returning();
+
+    if (result[0]) {
+      log.info({ event: 'tenant_status_updated', slug, status }, `Tenant status updated to ${status}`);
+    }
+
+    return result[0] ?? null;
+  }
+
+  /**
    * Update tenant's encrypted credentials.
    */
   async updateTenantCredentials(
@@ -428,6 +506,90 @@ export class TenantService {
     await clearTenantConnection(slug);
 
     log.info({ event: 'tenant_deleted', slug }, 'Tenant deleted');
+  }
+
+  /**
+   * Hard delete a tenant - permanently removes:
+   * - Supabase project (database + storage)
+   * - Tenant record from main database
+   *
+   * This is IRREVERSIBLE. Use with caution.
+   *
+   * @param slug - Tenant slug to delete
+   * @param options.skipSupabaseDelete - Skip Supabase project deletion (useful if already deleted manually)
+   * @returns Object with deletion details
+   */
+  async hardDeleteTenant(
+    slug: string,
+    options: { skipSupabaseDelete?: boolean } = {}
+  ): Promise<{ tenantDeleted: boolean; supabaseDeleted: boolean; projectRef: string | null }> {
+    log.info({ event: 'hard_delete_start', slug }, `Starting hard delete for tenant: ${slug}`);
+
+    // Get tenant with secrets to extract project ref
+    const tenant = await this.getTenantAnyStatus(slug);
+    if (!tenant) {
+      throw new Error(`Tenant not found: ${slug}`);
+    }
+
+    let projectRef: string | null = null;
+    let supabaseDeleted = false;
+
+    // Extract project ref from encrypted database URL
+    if (tenant.encryptedDatabaseUrl) {
+      try {
+        const databaseUrl = decrypt(tenant.encryptedDatabaseUrl);
+        projectRef = this.extractProjectRef(databaseUrl);
+      } catch (error) {
+        log.warn(
+          { event: 'decrypt_error', slug, error: error instanceof Error ? error.message : String(error) },
+          'Could not decrypt database URL to extract project ref'
+        );
+      }
+    }
+
+    // Delete Supabase project (includes database and storage)
+    if (projectRef && !options.skipSupabaseDelete) {
+      if (!isProvisioningConfigured()) {
+        log.warn(
+          { event: 'provisioning_not_configured', slug },
+          'Cannot delete Supabase project: provisioning credentials not configured'
+        );
+      } else {
+        try {
+          log.info({ event: 'supabase_delete_start', slug, projectRef }, 'Deleting Supabase project...');
+          await deleteSupabaseProject(projectRef);
+          supabaseDeleted = true;
+          log.info({ event: 'supabase_deleted', slug, projectRef }, 'Supabase project deleted');
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          // Don't fail if project doesn't exist (may have been deleted manually)
+          if (errorMsg.includes('404') || errorMsg.includes('not found')) {
+            log.info({ event: 'supabase_not_found', slug, projectRef }, 'Supabase project not found (may already be deleted)');
+            supabaseDeleted = true; // Consider it deleted
+          } else {
+            log.error({ event: 'supabase_delete_error', slug, projectRef, error: errorMsg }, 'Failed to delete Supabase project');
+            throw new Error(`Failed to delete Supabase project: ${errorMsg}`);
+          }
+        }
+      }
+    }
+
+    // Clear connection pool
+    await clearTenantConnection(slug);
+
+    // Hard delete tenant record from main database
+    await this.mainDb.delete(tenants).where(eq(tenants.slug, slug));
+
+    log.info(
+      { event: 'hard_delete_complete', slug, projectRef, supabaseDeleted },
+      `Hard delete complete for tenant: ${slug}`
+    );
+
+    return {
+      tenantDeleted: true,
+      supabaseDeleted,
+      projectRef,
+    };
   }
 
   // ===========================================================================

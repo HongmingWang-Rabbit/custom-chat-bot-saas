@@ -75,11 +75,13 @@ export function parseCitations(
   context: CitationContext
 ): CitedResponse {
   const usedCitationNumbers = new Set<number>();
-  const citationRegex = /\[(\d+)\]/g;
+  // Match both [Citation N] and [N] formats
+  const citationRegex = /\[Citation\s*(\d+)\]|\[(\d+)\]/gi;
 
   let match;
   while ((match = citationRegex.exec(response)) !== null) {
-    const num = parseInt(match[1], 10);
+    // match[1] is from [Citation N], match[2] is from [N]
+    const num = parseInt(match[1] || match[2], 10);
     if (num > 0 && num <= context.chunks.length) {
       usedCitationNumbers.add(num);
     }
@@ -172,13 +174,15 @@ export function validateCitations(
   invalidCitations: number[];
   unusedChunks: number[];
 } {
-  const citationRegex = /\[(\d+)\]/g;
+  // Match both [Citation N] and [N] formats
+  const citationRegex = /\[Citation\s*(\d+)\]|\[(\d+)\]/gi;
   const usedCitations = new Set<number>();
   const invalidCitations: number[] = [];
 
   let match;
   while ((match = citationRegex.exec(response)) !== null) {
-    const num = parseInt(match[1], 10);
+    // match[1] is from [Citation N], match[2] is from [N]
+    const num = parseInt(match[1] || match[2], 10);
     if (num > 0 && num <= context.chunks.length) {
       usedCitations.add(num);
     } else {

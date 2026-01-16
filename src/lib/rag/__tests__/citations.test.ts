@@ -148,6 +148,47 @@ describe('citations', () => {
       expect(result.usedChunkIds).toHaveLength(0);
     });
 
+    it('should extract [Citation N] format citations', () => {
+      const context = buildCitationContext(mockChunks);
+      const response = 'Revenue was $150M [Citation 1]. Key risks include competition [Citation 2].';
+
+      const result = parseCitations(response, context);
+
+      expect(result.citations).toHaveLength(2);
+      expect(result.usedChunkIds).toContain('chunk-1');
+      expect(result.usedChunkIds).toContain('chunk-2');
+    });
+
+    it('should handle mixed [N] and [Citation N] formats', () => {
+      const context = buildCitationContext(mockChunks);
+      const response = 'First fact [1]. Second fact [Citation 2]. Third fact [3].';
+
+      const result = parseCitations(response, context);
+
+      expect(result.citations).toHaveLength(3);
+      expect(result.citations[0].id).toBe(1);
+      expect(result.citations[1].id).toBe(2);
+      expect(result.citations[2].id).toBe(3);
+    });
+
+    it('should handle [Citation N] with varying whitespace', () => {
+      const context = buildCitationContext(mockChunks);
+      const response = 'Fact [Citation1]. Another [Citation  2]. More [Citation   3].';
+
+      const result = parseCitations(response, context);
+
+      expect(result.citations).toHaveLength(3);
+    });
+
+    it('should be case-insensitive for Citation keyword', () => {
+      const context = buildCitationContext(mockChunks);
+      const response = 'Lower [citation 1]. Upper [CITATION 2]. Mixed [CiTaTiOn 3].';
+
+      const result = parseCitations(response, context);
+
+      expect(result.citations).toHaveLength(3);
+    });
+
     it('should include chunk content in citations', () => {
       const context = buildCitationContext(mockChunks);
       const response = 'Revenue was $150M [1].';
@@ -283,6 +324,38 @@ describe('citations', () => {
       const result = validateCitations(response, context);
 
       expect(result.invalidCitations).toContain(0);
+    });
+
+    it('should validate [Citation N] format', () => {
+      const context = buildCitationContext(mockChunks);
+      const response = 'Info from [Citation 1] and [Citation 2].';
+
+      const result = validateCitations(response, context);
+
+      expect(result.isValid).toBe(true);
+      expect(result.hasCitations).toBe(true);
+      expect(result.invalidCitations).toHaveLength(0);
+    });
+
+    it('should detect invalid [Citation N] citations', () => {
+      const context = buildCitationContext(mockChunks);
+      const response = 'Info from [Citation 1] and [Citation 99].';
+
+      const result = validateCitations(response, context);
+
+      expect(result.isValid).toBe(false);
+      expect(result.invalidCitations).toContain(99);
+    });
+
+    it('should handle mixed formats in validation', () => {
+      const context = buildCitationContext(mockChunks);
+      const response = 'First [1], second [Citation 2], third [3].';
+
+      const result = validateCitations(response, context);
+
+      expect(result.isValid).toBe(true);
+      expect(result.hasCitations).toBe(true);
+      expect(result.unusedChunks).toHaveLength(0);
     });
   });
 

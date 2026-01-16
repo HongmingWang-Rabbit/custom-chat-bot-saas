@@ -1,0 +1,99 @@
+================================================================================
+                    DEMO COMPANY INC.
+                   RISK FACTORS DISCLOSURE
+================================================================================
+
+IMPORTANT NOTICE
+----------------
+
+Investing in Demo Company Inc. involves significant risks. Prospective
+investors should carefully consider the following risk factors before making
+an investment decision.
+
+
+MARKET AND COMPETITION RISKS
+----------------------------
+
+1. INTENSE COMPETITION
+
+   We operate in highly competitive markets with established players
+   including large technology companies with greater resources. Our
+   competitors may develop superior products or acquire customers at
+   lower costs.
+
+2. MARKET ADOPTION
+
+   The enterprise software market is subject to rapid technological
+   changes. Our success depends on customers adopting our solutions
+   and continued market acceptance of cloud-based software.
+
+3. ECONOMIC CONDITIONS
+
+   Adverse economic conditions may reduce customer spending on software
+   and technology services, negatively impacting our revenue growth.
+
+
+OPERATIONAL RISKS
+-----------------
+
+1. KEY PERSONNEL
+
+   Our success depends on key executives and technical personnel.
+   Loss of key employees could adversely affect our business operations.
+
+2. CYBERSECURITY
+
+   We process and store sensitive customer data. Security breaches or
+   data incidents could damage our reputation and result in legal liability.
+
+3. SERVICE DISRUPTIONS
+
+   Our cloud services require high availability. System outages or
+   performance degradation could lead to customer losses and
+   reputational harm.
+
+4. INTERNATIONAL OPERATIONS
+
+   Operating in multiple countries exposes us to currency fluctuations,
+   regulatory complexity, and geopolitical risks.
+
+
+FINANCIAL RISKS
+---------------
+
+1. CUSTOMER CONCENTRATION
+
+   Our top 10 customers represent approximately 35% of annual revenue.
+   Loss of major customers could significantly impact our financial results.
+
+2. REVENUE RECOGNITION
+
+   Complex multi-year contracts may result in revenue timing variations
+   that affect quarterly results.
+
+3. INVESTMENT REQUIREMENTS
+
+   Continued growth requires significant investment in research,
+   development, sales, and marketing, which may impact short-term
+   profitability.
+
+
+REGULATORY AND COMPLIANCE RISKS
+-------------------------------
+
+1. DATA PRIVACY
+
+   Evolving data protection regulations including GDPR and CCPA require
+   ongoing compliance investments and may restrict our data processing
+   activities.
+
+2. INDUSTRY REGULATIONS
+
+   Our customers in regulated industries may be subject to specific
+   compliance requirements affecting their purchasing decisions.
+
+
+================================================================================
+                    SEC FILING - Form 10-K
+                      Demo Company Inc.
+================================================================================

@@ -64,6 +64,9 @@ export const documents = pgTable('documents', {
   fileSize: integer('file_size'),
   mimeType: varchar('mime_type', { length: 100 }),
 
+  // Storage (Supabase Storage)
+  storageKey: varchar('storage_key', { length: 500 }), // Object path in tenant's storage bucket
+
   // Processing status
   status: varchar('status', { length: 20 }).default('pending').$type<DocumentStatus>(),
   chunkCount: integer('chunk_count').default(0),

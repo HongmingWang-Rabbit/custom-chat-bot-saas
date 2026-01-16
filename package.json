@@ -17,7 +17,11 @@
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
     "db:generate:tenant": "drizzle-kit generate --config=drizzle.tenant.config.ts",
-    "db:push:tenant": "drizzle-kit push --config=drizzle.tenant.config.ts"
+    "db:push:tenant": "drizzle-kit push --config=drizzle.tenant.config.ts",
+    "migrate:all": "npx tsx scripts/migrate-all.ts",
+    "migrate:main": "npx tsx scripts/migrate-all.ts --main-only",
+    "migrate:tenants": "npx tsx scripts/migrate-all.ts --tenants-only",
+    "migrate:dry-run": "npx tsx scripts/migrate-all.ts --dry-run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

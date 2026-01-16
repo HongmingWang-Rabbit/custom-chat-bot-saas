@@ -20,6 +20,7 @@ vi.mock('@/lib/crypto/encryption', () => ({
 
 vi.mock('@/lib/supabase/provisioning', () => ({
   provisionSupabaseProject: vi.fn(),
+  deleteSupabaseProject: vi.fn(),
   isProvisioningConfigured: vi.fn(() => true),
 }));
 
@@ -43,6 +44,7 @@ import {
 import { encrypt, decrypt } from '@/lib/crypto/encryption';
 import {
   provisionSupabaseProject,
+  deleteSupabaseProject,
   isProvisioningConfigured,
 } from '@/lib/supabase/provisioning';
 import { runTenantMigrations } from '@/lib/supabase/tenant-migrations';
@@ -55,7 +57,7 @@ const mockTenant = {
   id: 'test-id-123',
   slug: 'test-tenant',
   name: 'Test Tenant',
-  encryptedDatabaseUrl: 'encrypted:postgresql://localhost:5432/test',
+  encryptedDatabaseUrl: 'encrypted:postgresql://postgres.abc123xyz:password@aws-0-us-east-1.pooler.supabase.com:6543/postgres',
   encryptedServiceKey: 'encrypted:service-key-123',
   encryptedAnonKey: 'encrypted:anon-key-123',
   encryptedLlmApiKey: 'encrypted:sk-test-key',
@@ -96,6 +98,7 @@ const mockDbMethods = {
   returning: vi.fn().mockResolvedValue([mockTenant]),
   update: vi.fn().mockReturnThis(),
   set: vi.fn().mockReturnThis(),
+  delete: vi.fn().mockReturnThis(),
 };
 
 // =============================================================================
@@ -177,7 +180,7 @@ describe('TenantService', () => {
       const result = await service.getTenantWithSecrets('test-tenant');
 
       expect(result).not.toBeNull();
-      expect(result!.databaseUrl).toBe('postgresql://localhost:5432/test');
+      expect(result!.databaseUrl).toContain('pooler.supabase.com');
       expect(result!.serviceKey).toBe('service-key-123');
       expect(result!.anonKey).toBe('anon-key-123');
       expect(result!.llmApiKey).toBe('sk-test-key');
@@ -254,7 +257,7 @@ describe('TenantService', () => {
 
       expect(result).toBe(mockTenantDb);
       expect(createTenantDb).toHaveBeenCalledWith(
-        'postgresql://localhost:5432/test',
+        expect.stringContaining('pooler.supabase.com'),
         'test-tenant'
       );
     });
@@ -380,12 +383,12 @@ describe('TenantService', () => {
   describe('createTenantWithProvisioning', () => {
     beforeEach(() => {
       (provisionSupabaseProject as ReturnType<typeof vi.fn>).mockResolvedValue({
-        projectId: 'proj-123',
         projectRef: 'test-ref',
-        databaseUrl: 'postgresql://db.supabase.co:5432/postgres',
+        databaseUrl: 'postgresql://postgres.test-ref:pass@db.supabase.co:5432/postgres',
         anonKey: 'anon-key-123',
         serviceKey: 'service-key-123',
-        region: 'us-east-1',
+        apiUrl: 'https://test-ref.supabase.co',
+        storageBucketName: 'documents',
       });
 
       (runTenantMigrations as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -402,7 +405,8 @@ describe('TenantService', () => {
       });
 
       expect(result.tenant).toEqual(mockTenant);
-      expect(result.supabaseCredentials.projectId).toBe('proj-123');
+      expect(result.supabaseCredentials.projectRef).toBe('test-ref');
+      expect(result.supabaseCredentials.storageBucketName).toBe('documents');
       expect(result.migrations.success).toBe(true);
       expect(provisionSupabaseProject).toHaveBeenCalledWith('auto-tenant', undefined);
       expect(runTenantMigrations).toHaveBeenCalled();
@@ -549,6 +553,90 @@ describe('TenantService', () => {
         })
       );
       expect(clearTenantConnection).toHaveBeenCalledWith('test-tenant');
+    });
+  });
+
+  // ===========================================================================
+  // hardDeleteTenant
+  // ===========================================================================
+
+  describe('hardDeleteTenant', () => {
+    beforeEach(() => {
+      (deleteSupabaseProject as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    });
+
+    it('should delete Supabase project and tenant record', async () => {
+      const result = await service.hardDeleteTenant('test-tenant');
+
+      expect(result.tenantDeleted).toBe(true);
+      expect(result.supabaseDeleted).toBe(true);
+      expect(result.projectRef).toBe('abc123xyz');
+      expect(deleteSupabaseProject).toHaveBeenCalledWith('abc123xyz');
+      expect(mockDbMethods.delete).toHaveBeenCalled();
+      expect(clearTenantConnection).toHaveBeenCalledWith('test-tenant');
+    });
+
+    it('should throw if tenant not found', async () => {
+      mockDbMethods.limit.mockResolvedValueOnce([]);
+
+      await expect(service.hardDeleteTenant('non-existent')).rejects.toThrow(
+        'Tenant not found'
+      );
+    });
+
+    it('should skip Supabase deletion when skipSupabaseDelete is true', async () => {
+      const result = await service.hardDeleteTenant('test-tenant', {
+        skipSupabaseDelete: true,
+      });
+
+      expect(result.tenantDeleted).toBe(true);
+      expect(result.supabaseDeleted).toBe(false);
+      expect(deleteSupabaseProject).not.toHaveBeenCalled();
+      expect(mockDbMethods.delete).toHaveBeenCalled();
+    });
+
+    it('should handle Supabase project not found gracefully', async () => {
+      (deleteSupabaseProject as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error('Supabase API error (404): Project not found')
+      );
+
+      const result = await service.hardDeleteTenant('test-tenant');
+
+      expect(result.tenantDeleted).toBe(true);
+      expect(result.supabaseDeleted).toBe(true); // Still considered deleted
+      expect(mockDbMethods.delete).toHaveBeenCalled();
+    });
+
+    it('should throw on Supabase deletion error', async () => {
+      (deleteSupabaseProject as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+        new Error('Supabase API error (500): Internal error')
+      );
+
+      await expect(service.hardDeleteTenant('test-tenant')).rejects.toThrow(
+        'Failed to delete Supabase project'
+      );
+    });
+
+    it('should warn if provisioning not configured', async () => {
+      (isProvisioningConfigured as ReturnType<typeof vi.fn>).mockReturnValueOnce(false);
+
+      const result = await service.hardDeleteTenant('test-tenant');
+
+      expect(result.supabaseDeleted).toBe(false);
+      expect(deleteSupabaseProject).not.toHaveBeenCalled();
+      expect(mockDbMethods.delete).toHaveBeenCalled();
+    });
+
+    it('should handle missing database URL gracefully', async () => {
+      mockDbMethods.limit.mockResolvedValueOnce([
+        { ...mockTenant, encryptedDatabaseUrl: null },
+      ]);
+
+      const result = await service.hardDeleteTenant('test-tenant');
+
+      expect(result.projectRef).toBeNull();
+      expect(result.supabaseDeleted).toBe(false);
+      expect(mockDbMethods.delete).toHaveBeenCalled();
     });
   });
 

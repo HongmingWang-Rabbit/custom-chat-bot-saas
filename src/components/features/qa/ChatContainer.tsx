@@ -50,21 +50,30 @@ export function ChatContainer({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-[var(--color-border)]">
-        <h1 className="text-lg font-semibold">
-          {tenantName ? `${tenantName} Q&A` : 'Investor Q&A'}
-        </h1>
-        <p className="text-sm text-[var(--color-muted)]">
-          Ask questions about company disclosures and documents
-        </p>
+      <div className="flex-shrink-0 px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-50 rounded-lg">
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="font-semibold text-gray-900">
+              {tenantName ? `${tenantName} Q&A` : 'Investor Q&A'}
+            </h1>
+            <p className="text-sm text-gray-500">
+              Ask questions about company disclosures and documents
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 overflow-y-auto px-6 py-6">
         {messages.length === 0 ? (
-          <EmptyState />
+          <EmptyState onSelectQuestion={onSendMessage} />
         ) : (
-          <div className="space-y-4 max-w-3xl mx-auto">
+          <div className="space-y-6 max-w-3xl mx-auto">
             {messages.map((message) => (
               <ChatMessage
                 key={message.id}
@@ -81,7 +90,7 @@ export function ChatContainer({
       </div>
 
       {/* Input */}
-      <div className="flex-shrink-0 px-4 py-3 border-t border-[var(--color-border)]">
+      <div className="flex-shrink-0 px-6 py-4 border-t border-gray-100 bg-gray-50/50">
         <div className="max-w-3xl mx-auto">
           <ChatInput onSubmit={onSendMessage} disabled={isLoading} />
         </div>
@@ -94,12 +103,12 @@ export function ChatContainer({
 // Empty State
 // =============================================================================
 
-function EmptyState() {
+function EmptyState({ onSelectQuestion }: { onSelectQuestion: (question: string) => void }) {
   return (
     <div className="h-full flex flex-col items-center justify-center text-center px-4">
-      <div className="w-16 h-16 mb-4 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center">
+      <div className="w-20 h-20 mb-6 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
         <svg
-          className="w-8 h-8 text-[var(--color-primary)]"
+          className="w-10 h-10 text-white"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -112,18 +121,36 @@ function EmptyState() {
           />
         </svg>
       </div>
-      <h2 className="text-xl font-semibold mb-2">Ask a Question</h2>
-      <p className="text-[var(--color-muted)] max-w-md mb-6">
+      <h2 className="text-2xl font-semibold text-gray-900 mb-2">Ask a Question</h2>
+      <p className="text-gray-500 max-w-md mb-8">
         Get instant answers from our knowledge base with citations to source documents.
       </p>
-      <div className="space-y-2 text-sm text-[var(--color-muted-foreground)]">
-        <p>Try asking:</p>
-        <ul className="space-y-1">
-          <li>&ldquo;What are the key risk factors?&rdquo;</li>
-          <li>&ldquo;Summarize the financial performance&rdquo;</li>
-          <li>&ldquo;What is the company&apos;s growth strategy?&rdquo;</li>
-        </ul>
+
+      {/* Example questions */}
+      <div className="w-full max-w-md">
+        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">
+          Try asking
+        </p>
+        <div className="space-y-2">
+          <ExampleQuestion text="What are the key risk factors?" onClick={onSelectQuestion} />
+          <ExampleQuestion text="Summarize the financial performance" onClick={onSelectQuestion} />
+          <ExampleQuestion text="What is the company's growth strategy?" onClick={onSelectQuestion} />
+        </div>
       </div>
     </div>
+  );
+}
+
+function ExampleQuestion({ text, onClick }: { text: string; onClick: (question: string) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(text)}
+      className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 rounded-xl text-sm text-gray-700 text-left cursor-pointer transition"
+    >
+      <span className="text-blue-500 mr-2">&ldquo;</span>
+      {text}
+      <span className="text-blue-500 ml-1">&rdquo;</span>
+    </button>
   );
 }

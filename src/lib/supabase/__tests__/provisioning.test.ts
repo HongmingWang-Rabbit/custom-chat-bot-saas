@@ -61,6 +61,28 @@ function mockFetchError(message: string, status: number) {
   });
 }
 
+// Mock storage bucket response (used by provisionSupabaseProject)
+const mockStorageBucketResponse = {
+  id: 'documents',
+  name: 'documents',
+  public: false,
+  file_size_limit: 10485760,
+  allowed_mime_types: ['application/pdf', 'text/plain'],
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+};
+
+// Mock pooler config response (used by provisionSupabaseProject)
+const mockPoolerConfigResponse = [
+  {
+    db_host: 'aws-0-us-east-1.pooler.supabase.com',
+    db_port: 6543,
+    db_user: 'postgres.abcdefgh',
+    db_name: 'postgres',
+    database_type: 'PRIMARY',
+  },
+];
+
 // =============================================================================
 // validateProvisioningCredentials Tests
 // =============================================================================
@@ -170,6 +192,12 @@ describe('provisionSupabaseProject', () => {
     // Mock API keys
     mockFetchResponse(mockApiKeys);
 
+    // Mock pooler config
+    mockFetchResponse(mockPoolerConfigResponse);
+
+    // Mock storage bucket creation
+    mockFetchResponse(mockStorageBucketResponse);
+
     const result = await provisionSupabaseProject('test-tenant');
 
     expect(result.projectRef).toBe('abcdefgh');
@@ -178,12 +206,15 @@ describe('provisionSupabaseProject', () => {
     expect(result.apiUrl).toBe('https://abcdefgh.supabase.co');
     expect(result.databaseUrl).toContain('postgres.abcdefgh');
     expect(result.databaseUrl).toContain('pooler.supabase.com');
+    expect(result.storageBucketName).toBe('documents');
   });
 
   it('should use custom region when provided', async () => {
     mockFetchResponse({ ...mockProjectResponse, region: 'eu-west-1' });
     mockFetchResponse({ ...mockProjectResponse, status: 'ACTIVE_HEALTHY', region: 'eu-west-1' });
     mockFetchResponse(mockApiKeys);
+    mockFetchResponse(mockPoolerConfigResponse);
+    mockFetchResponse(mockStorageBucketResponse);
 
     await provisionSupabaseProject('test-tenant', 'eu-west-1');
 
@@ -253,6 +284,8 @@ describe('provisionSupabaseProject', () => {
     mockFetchResponse(mockProjectResponse);
     mockFetchResponse({ ...mockProjectResponse, status: 'ACTIVE_HEALTHY' });
     mockFetchResponse(mockApiKeys);
+    mockFetchResponse(mockPoolerConfigResponse);
+    mockFetchResponse(mockStorageBucketResponse);
 
     await provisionSupabaseProject('test-tenant');
 

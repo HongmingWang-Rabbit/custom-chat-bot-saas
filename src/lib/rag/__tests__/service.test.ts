@@ -187,7 +187,7 @@ describe('RAGService', () => {
         tenantSlug: 'test-tenant',
       });
 
-      expect(result.answer).toContain("don't have enough information");
+      expect(result.answer).toContain("couldn't find relevant information");
       expect(result.citations).toHaveLength(0);
       expect(result.confidence).toBe(0);
       expect(result.retrievedChunks).toBe(0);
@@ -310,7 +310,7 @@ describe('RAGService', () => {
       );
 
       expect(callbacks.onChunk).toHaveBeenCalledWith(
-        expect.stringContaining("don't have enough information")
+        expect.stringContaining("couldn't find relevant information")
       );
       expect(callbacks.onComplete).toHaveBeenCalledWith(
         expect.objectContaining({

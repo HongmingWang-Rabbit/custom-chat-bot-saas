@@ -80,7 +80,7 @@ export default function TenantSettingsPage({
   });
   const [ragConfig, setRagConfig] = useState<RAGConfig>({
     topK: 5,
-    confidenceThreshold: 0.6,
+    confidenceThreshold: 0.25,
     chunkSize: 500,
     chunkOverlap: 50,
   });
@@ -530,7 +530,7 @@ function RAGSettings({
         <input
           type="number"
           value={ragConfig.confidenceThreshold}
-          onChange={(e) => setRagConfig({ ...ragConfig, confidenceThreshold: parseFloat(e.target.value) || 0.6 })}
+          onChange={(e) => setRagConfig({ ...ragConfig, confidenceThreshold: parseFloat(e.target.value) || 0.25 })}
           className="w-full px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
           min={0}
           max={1}

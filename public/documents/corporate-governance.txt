@@ -1,0 +1,98 @@
+================================================================================
+                    DEMO COMPANY INC.
+              CORPORATE GOVERNANCE OVERVIEW
+================================================================================
+
+
+BOARD OF DIRECTORS
+------------------
+
+Demo Company is committed to maintaining the highest standards of corporate
+governance. Our board consists of 9 directors, 7 of whom are independent.
+
+
+BOARD COMPOSITION
+-----------------
+
+  Name                      Role
+  ----                      ----
+  Jane Smith                CEO and Chair
+  John Doe                  Co-Founder and CTO
+  Sarah Johnson             Independent Director (Audit Committee Chair)
+  Michael Chen              Independent Director (Compensation Committee Chair)
+  Emily Davis               Independent Director (Nominating Committee Chair)
+  Robert Wilson             Independent Director
+  Lisa Anderson             Independent Director
+  David Brown               Independent Director
+  Jennifer Taylor           Independent Director
+
+
+BOARD COMMITTEES
+----------------
+
+1. AUDIT COMMITTEE
+
+   Oversees financial reporting, internal controls, and external audits.
+   Meets quarterly and includes only independent directors.
+
+2. COMPENSATION COMMITTEE
+
+   Determines executive compensation, equity awards, and reviews
+   company-wide compensation policies.
+
+3. NOMINATING AND GOVERNANCE COMMITTEE
+
+   Identifies board candidates, oversees governance practices, and
+   reviews board performance.
+
+
+EXECUTIVE COMPENSATION PHILOSOPHY
+---------------------------------
+
+Our compensation programs are designed to attract, retain, and motivate
+top talent while aligning executive interests with shareholder value
+creation. Key principles include:
+
+  * Pay for performance with significant variable compensation
+  * Long-term equity incentives aligned with shareholder returns
+  * Competitive base salaries benchmarked to peer companies
+  * Clawback provisions for executive bonuses
+
+
+CODE OF CONDUCT
+---------------
+
+All employees, officers, and directors are required to comply with our
+Code of Business Conduct and Ethics. The code addresses:
+
+  * Conflicts of interest
+  * Confidentiality
+  * Fair dealing
+  * Compliance with laws
+  * Reporting of violations
+
+
+SHAREHOLDER RIGHTS
+------------------
+
+  * Annual meeting participation and voting
+  * Proxy access for qualifying shareholders
+  * Majority voting standard for director elections
+  * No poison pill or staggered board provisions
+
+
+ESG COMMITMENT
+--------------
+
+We are committed to environmental, social, and governance excellence.
+Recent initiatives include:
+
+  * Carbon neutrality targets
+  * Diversity and inclusion programs
+  * Enhanced data privacy practices
+
+
+================================================================================
+                   Proxy Statement 2024
+                   Demo Company Inc.
+================================================================================

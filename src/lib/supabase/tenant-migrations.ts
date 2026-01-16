@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS documents (
   file_size INTEGER,
   mime_type VARCHAR(100),
 
+  -- Storage (Supabase Storage)
+  storage_key VARCHAR(500),
+
   -- Processing status
   status VARCHAR(20) DEFAULT 'pending',
   chunk_count INTEGER DEFAULT 0,
@@ -51,6 +54,14 @@ CREATE TABLE IF NOT EXISTS documents (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at);
+`;
+
+/**
+ * SQL to add storage_key column to existing documents table.
+ * This is an incremental migration for existing tenant databases.
+ */
+const ADD_STORAGE_KEY_COLUMN = `
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS storage_key VARCHAR(500);
 `;
 
 /**
@@ -228,6 +239,11 @@ export async function runTenantMigrations(
     console.log('[Migrations] Creating documents table...');
     await sql.unsafe(CREATE_DOCUMENTS_TABLE);
     migrationsRun.push('documents_table');
+
+    // 2b. Add storage_key column (for existing databases)
+    console.log('[Migrations] Adding storage_key column...');
+    await sql.unsafe(ADD_STORAGE_KEY_COLUMN);
+    migrationsRun.push('storage_key_column');
 
     // 3. Create document_chunks table
     console.log('[Migrations] Creating document_chunks table...');

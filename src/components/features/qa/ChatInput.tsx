@@ -57,7 +57,7 @@ export function ChatInput({
 
   return (
     <form onSubmit={handleSubmit} className="relative">
-      <div className="flex items-end gap-2 p-2 bg-white dark:bg-gray-800 border border-[var(--color-border)] rounded-xl shadow-sm">
+      <div className="flex items-end gap-3 p-3 bg-white border border-gray-200 rounded-xl shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition">
         <textarea
           ref={textareaRef}
           value={value}
@@ -66,13 +66,13 @@ export function ChatInput({
           placeholder={placeholder}
           disabled={disabled}
           rows={1}
-          className="flex-1 resize-none bg-transparent border-none outline-none px-2 py-2 text-sm placeholder:text-[var(--color-muted-foreground)] disabled:opacity-50"
+          className="flex-1 resize-none bg-transparent border-none outline-none px-1 py-1 text-sm text-gray-700 placeholder:text-gray-400 disabled:opacity-50"
         />
 
         <button
           type="submit"
           disabled={disabled || !value.trim()}
-          className="flex-shrink-0 p-2 rounded-lg bg-[var(--color-primary)] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+          className="flex-shrink-0 p-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow"
           aria-label="Send message"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -86,9 +86,10 @@ export function ChatInput({
         </button>
       </div>
 
+      {/* Loading overlay */}
       {disabled && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-800/50 rounded-xl">
-          <div className="flex items-center gap-2 text-sm text-[var(--color-muted)]">
+        <div className="absolute inset-0 flex items-center justify-center bg-white/80 rounded-xl backdrop-blur-sm">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
             <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle
                 className="opacity-25"
@@ -108,6 +109,11 @@ export function ChatInput({
           </div>
         </div>
       )}
+
+      {/* Hint */}
+      <p className="mt-2 text-xs text-gray-400 text-center">
+        Press Enter to send, Shift+Enter for new line
+      </p>
     </form>
   );
 }

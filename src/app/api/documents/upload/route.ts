@@ -24,6 +24,7 @@ import { chunkDocument, createEmbeddingService } from '@/lib/rag';
 import {
   parseFile,
   validateFile,
+  getMimeType,
   SUPPORTED_EXTENSIONS,
   MAX_FILE_SIZE,
 } from '@/lib/parsers';
@@ -37,6 +38,7 @@ import {
   Timer,
   truncateText,
 } from '@/lib/logger';
+import { StorageService, StorageUploadResult } from '@/lib/services/storage-service';
 
 // =============================================================================
 // POST Handler - Upload File
@@ -157,6 +159,9 @@ export async function POST(request: NextRequest) {
       { status: 500, headers: { 'X-Trace-Id': ctx.traceId } }
     );
   }
+
+  // Get storage service (may be null if not configured)
+  const storageService = await tenantService.getStorageService(tenantSlug);
   timer.measure('tenant');
 
   try {
@@ -187,16 +192,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Generate document ID upfront for storage path
+    const docId = crypto.randomUUID();
+
+    // Upload to storage (if available)
+    let storageResult: StorageUploadResult | null = null;
+    if (storageService) {
+      timer.mark('storage_upload');
+      try {
+        storageResult = await storageService.uploadFile(
+          docId,
+          file.name,
+          buffer,
+          file.type || 'application/octet-stream'
+        );
+        timer.measure('storage_upload');
+
+        log.info(
+          {
+            event: 'storage_uploaded',
+            storageKey: storageResult.storageKey,
+            size: storageResult.size,
+            duration_ms: timer.getDuration('storage_upload'),
+          },
+          'File uploaded to storage'
+        );
+      } catch (storageError) {
+        timer.measure('storage_upload');
+        log.warn(
+          {
+            event: 'storage_error',
+            error: storageError instanceof Error ? storageError.message : String(storageError),
+          },
+          'Storage upload failed, continuing without file storage'
+        );
+        // Continue without storage - not a fatal error
+      }
+    } else {
+      log.debug({ event: 'storage_unavailable' }, 'Storage not configured, skipping file storage');
+    }
+
     // Create document record
     timer.mark('db_insert');
     const docTitle = title || file.name.replace(/\.[^/.]+$/, '');
     const newDoc: NewDocument = {
+      id: docId,
       title: docTitle,
       content: parseResult.content,
       url: url || undefined,
       docType: docType as 'disclosure' | 'faq' | 'report' | 'filing' | 'other',
       fileName: file.name,
       fileSize: file.size,
+      mimeType: getMimeType(file.name),
+      storageKey: storageResult?.storageKey ?? null,
       status: 'processing',
     };
 
@@ -288,6 +336,7 @@ export async function POST(request: NextRequest) {
           fileSize: updatedDoc.fileSize,
           status: updatedDoc.status,
           chunkCount: updatedDoc.chunkCount,
+          hasOriginalFile: !!updatedDoc.storageKey,
           createdAt: updatedDoc.createdAt,
         },
         metadata: parseResult.metadata,

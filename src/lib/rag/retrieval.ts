@@ -46,7 +46,7 @@ export interface RetrievalOptions {
 
 const DEFAULT_RETRIEVAL_OPTIONS: RetrievalOptions = {
   topK: 5,
-  confidenceThreshold: 0.6,
+  confidenceThreshold: 0.25, // Lower threshold for OpenAI embeddings (cosine similarity)
 };
 
 // =============================================================================
@@ -91,9 +91,9 @@ export async function retrieveChunks(
       1 - (dc.embedding <=> ${embeddingStr}::vector) as similarity,
       d.id as document_id,
       d.title as document_title,
-      d.source as document_source
+      d.url as document_source
     FROM document_chunks dc
-    JOIN documents d ON dc.document_id = d.id
+    JOIN documents d ON dc.doc_id = d.id
     WHERE d.status = 'ready'
     ${opts.documentIds?.length
       ? sql`AND d.id IN (${sql.join(opts.documentIds.map(id => sql`${id}`), sql`, `)})`
@@ -104,8 +104,9 @@ export async function retrieveChunks(
   `);
 
   // Convert to RetrievedChunk format with confidence scores
-  // The execute result is an array-like RowList
-  const rows = results as unknown as ChunkRow[];
+  // postgres-js driver returns rows directly as an array-like result
+  const rows: ChunkRow[] = Array.from(results as unknown as ChunkRow[]);
+
   const chunks: RetrievedChunk[] = rows
     .filter((row) => row.similarity >= opts.confidenceThreshold)
     .map((row) => ({
@@ -139,7 +140,7 @@ export async function retrieveWithConfig(
 ): Promise<RetrievalResult> {
   return retrieveChunks(db, query, apiKey, {
     topK: ragConfig.topK ?? 5,
-    confidenceThreshold: ragConfig.confidenceThreshold ?? 0.6,
+    confidenceThreshold: ragConfig.confidenceThreshold ?? 0.25,
   });
 }
 

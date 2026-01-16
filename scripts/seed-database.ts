@@ -36,6 +36,9 @@ const SAMPLE_DOCUMENTS = [
   {
     title: 'Q3 2024 Earnings Report',
     docType: 'report',
+    url: '/documents/q3-2024-earnings-report.txt',
+    fileName: 'q3-2024-earnings-report.txt',
+    mimeType: 'text/plain',
     content: `
 Demo Company Inc. Q3 2024 Earnings Report
 
@@ -74,6 +77,9 @@ We expect continued momentum with Q4 revenue projected between $155-160 million.
   {
     title: 'Risk Factors Disclosure',
     docType: 'disclosure',
+    url: '/documents/risk-factors-disclosure.txt',
+    fileName: 'risk-factors-disclosure.txt',
+    mimeType: 'text/plain',
     content: `
 Risk Factors
 
@@ -111,6 +117,9 @@ Regulatory and Compliance Risks:
   {
     title: 'Company FAQ',
     docType: 'faq',
+    url: '/documents/company-faq.txt',
+    fileName: 'company-faq.txt',
+    mimeType: 'text/plain',
     content: `
 Frequently Asked Questions
 
@@ -159,6 +168,9 @@ A: All SEC filings, earnings reports, and investor presentations are available o
   {
     title: 'Corporate Governance',
     docType: 'filing',
+    url: '/documents/corporate-governance.txt',
+    fileName: 'corporate-governance.txt',
+    mimeType: 'text/plain',
     content: `
 Corporate Governance Overview
 
@@ -374,7 +386,7 @@ async function seed() {
         database_region VARCHAR(50),
         branding JSONB DEFAULT '{"primaryColor":"#3B82F6","secondaryColor":"#1E40AF","backgroundColor":"#FFFFFF","textColor":"#1F2937","accentColor":"#10B981","fontFamily":"Inter, system-ui, sans-serif","borderRadius":"8px","logoUrl":null,"customCss":null}'::jsonb,
         llm_provider VARCHAR(50) DEFAULT 'openai',
-        rag_config JSONB DEFAULT '{"topK":5,"confidenceThreshold":0.6,"chunkSize":500,"chunkOverlap":50}'::jsonb,
+        rag_config JSONB DEFAULT '{"topK":5,"confidenceThreshold":0.25,"chunkSize":500,"chunkOverlap":50}'::jsonb,
         status VARCHAR(20) DEFAULT 'active',
         is_active BOOLEAN DEFAULT true,
         created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -401,7 +413,8 @@ async function seed() {
         doc_type VARCHAR(50) DEFAULT 'disclosure',
         file_name VARCHAR(255),
         file_size INTEGER,
-        mime_type VARCHAR(100),
+        mime_type VARCHAR(100) DEFAULT 'application/octet-stream',
+        storage_key VARCHAR(500),
         status VARCHAR(20) DEFAULT 'pending',
         chunk_count INTEGER DEFAULT 0,
         created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -409,6 +422,18 @@ async function seed() {
       )
     `);
     console.log('  ✓ documents table created');
+
+    // Add storage_key column if it doesn't exist (migration for existing DBs)
+    await db.execute(sql`
+      ALTER TABLE documents ADD COLUMN IF NOT EXISTS storage_key VARCHAR(500)
+    `).catch(() => {
+      console.log('  ⚠ storage_key column may already exist');
+    });
+
+    // Ensure mime_type has proper default
+    await db.execute(sql`
+      ALTER TABLE documents ALTER COLUMN mime_type SET DEFAULT 'application/octet-stream'
+    `).catch(() => {});
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS document_chunks (
@@ -506,10 +531,10 @@ async function seed() {
     for (const doc of SAMPLE_DOCUMENTS) {
       console.log(`\n  Processing: ${doc.title}`);
 
-      // Insert document
+      // Insert document with URL for download
       const docResult = await db.execute(sql`
-        INSERT INTO documents (title, content, doc_type, status)
-        VALUES (${doc.title}, ${doc.content}, ${doc.docType}, 'processing')
+        INSERT INTO documents (title, content, doc_type, url, file_name, mime_type, status)
+        VALUES (${doc.title}, ${doc.content}, ${doc.docType}, ${doc.url}, ${doc.fileName}, ${doc.mimeType}, 'processing')
         RETURNING id
       `);
       const docId = docResult[0].id;

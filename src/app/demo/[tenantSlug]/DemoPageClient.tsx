@@ -6,6 +6,7 @@
  * Renders the Q&A chat interface with tenant-specific branding.
  */
 
+import Link from 'next/link';
 import { useEffect } from 'react';
 import { ChatContainer } from '@/components/features/qa';
 import { useChat } from '@/hooks/useChat';
@@ -89,36 +90,62 @@ export function DemoPageClient({
   }, [branding.customCss]);
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] text-[var(--color-text)]">
-      {/* Header with logo */}
-      <header className="border-b border-[var(--color-border)] bg-white dark:bg-gray-900">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          {branding.logoUrl ? (
-            <img
-              src={branding.logoUrl}
-              alt={`${tenantName} logo`}
-              className="h-8 w-auto"
-            />
-          ) : (
-            <div className="h-8 w-8 rounded-lg bg-[var(--color-primary)] flex items-center justify-center">
-              <span className="text-white font-bold text-sm">
-                {tenantName.charAt(0).toUpperCase()}
-              </span>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            {/* Logo and tenant name */}
+            <div className="flex items-center gap-3">
+              {branding.logoUrl ? (
+                <img
+                  src={branding.logoUrl}
+                  alt={`${tenantName} logo`}
+                  className="h-8 w-auto"
+                />
+              ) : (
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
+                  <span className="text-white font-semibold">
+                    {tenantName.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              )}
+              <div>
+                <h1 className="font-semibold text-gray-900">{tenantName}</h1>
+                <p className="text-xs text-gray-500">Investor Q&A</p>
+              </div>
             </div>
-          )}
-          <span className="font-semibold">{tenantName}</span>
+
+            {/* Navigation */}
+            <div className="flex items-center gap-4">
+              <Link
+                href="/"
+                className="text-sm text-gray-600 hover:text-gray-900 transition"
+              >
+                Home
+              </Link>
+              <Link
+                href="/admin"
+                className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition"
+              >
+                Admin Panel
+              </Link>
+            </div>
+          </div>
         </div>
       </header>
 
       {/* Main chat area */}
-      <main className="h-[calc(100vh-57px)]">
-        <div className="max-w-5xl mx-auto h-full">
-          <ChatContainer
-            messages={messages}
-            isLoading={isLoading}
-            onSendMessage={sendMessage}
-            tenantName={tenantName}
-          />
+      <main className="h-[calc(100vh-65px)]">
+        <div className="max-w-5xl mx-auto h-full px-4 sm:px-6 lg:px-8 py-6">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm h-full overflow-hidden">
+            <ChatContainer
+              messages={messages}
+              isLoading={isLoading}
+              onSendMessage={sendMessage}
+              tenantName={tenantName}
+            />
+          </div>
         </div>
       </main>
     </div>

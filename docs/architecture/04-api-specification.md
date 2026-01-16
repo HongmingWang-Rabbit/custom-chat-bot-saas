@@ -173,195 +173,268 @@ Flag or unflag a Q&A log entry.
 
 ---
 
-### Companies API
+### Tenants API
 
-#### `GET /api/companies`
+#### `GET /api/tenants`
 
-List all companies.
+List all tenants.
 
 **Response:**
 ```json
 {
-  "data": [
+  "tenants": [
     {
       "id": "uuid",
       "slug": "acme-corp",
       "name": "Acme Corporation",
-      "is_active": true,
-      "created_at": "2024-01-01T00:00:00Z"
+      "databaseHost": "aws-1-us-east-1.***.supabase.com",
+      "status": "active",
+      "createdAt": "2024-01-01T00:00:00Z"
     }
   ]
 }
 ```
 
-#### `GET /api/companies/[slug]`
+#### `GET /api/tenants/[slug]`
 
-Get company details including branding.
+Get tenant details. Supports polling for provisioning status.
 
 **Response:**
 ```json
 {
-  "id": "uuid",
-  "slug": "acme-corp",
-  "name": "Acme Corporation",
-  "branding": {
-    "primaryColor": "#3B82F6",
-    "secondaryColor": "#1E40AF",
-    "backgroundColor": "#FFFFFF",
-    "textColor": "#1F2937",
-    "accentColor": "#10B981",
-    "fontFamily": "Inter, sans-serif",
-    "borderRadius": "8px",
-    "logoUrl": "/uploads/acme-logo.png",
-    "customCss": null
+  "tenant": {
+    "id": "uuid",
+    "slug": "acme-corp",
+    "name": "Acme Corporation",
+    "databaseHost": "aws-1-us-east-1.***.supabase.com",
+    "branding": {
+      "primaryColor": "#3B82F6",
+      "secondaryColor": "#1E40AF",
+      "backgroundColor": "#FFFFFF",
+      "textColor": "#1F2937",
+      "accentColor": "#10B981",
+      "fontFamily": "Inter, sans-serif",
+      "borderRadius": "8px",
+      "logoUrl": null,
+      "customCss": null
+    },
+    "llmProvider": "openai",
+    "ragConfig": {
+      "topK": 5,
+      "confidenceThreshold": 0.6,
+      "chunkSize": 500,
+      "chunkOverlap": 50
+    },
+    "status": "active",
+    "createdAt": "2024-01-01T00:00:00Z",
+    "updatedAt": "2024-01-01T00:00:00Z"
   },
-  "llm_config": {
-    "provider": "openai",
-    "model": "gpt-4o",
-    "embeddingModel": "text-embedding-3-small",
-    "temperature": 0.3,
-    "maxTokens": 1000
-  },
-  "rag_config": {
-    "topK": 5,
-    "confidenceThreshold": 0.6,
-    "chunkSize": 500,
-    "chunkOverlap": 50
-  }
+  "ready": true
 }
 ```
 
-#### `POST /api/companies`
+**Status Values:**
+| Status | Description |
+|--------|-------------|
+| `provisioning` | Supabase project created, migrations running |
+| `active` | Ready for use |
+| `suspended` | Temporarily disabled |
+| `error` | Provisioning failed |
+| `deleted` | Soft deleted |
 
-Create a new company.
+#### `POST /api/tenants`
+
+Create a tenant with manual credentials.
 
 **Request:**
 ```json
 {
-  "slug": "new-company",
-  "name": "New Company Inc"
+  "slug": "new-tenant",
+  "name": "New Tenant Inc",
+  "databaseUrl": "postgresql://...",
+  "serviceKey": "service-key",
+  "anonKey": "anon-key",
+  "llmApiKey": "sk-..."
 }
 ```
 
-#### `PATCH /api/companies/[slug]`
+#### `POST /api/tenants/provision`
 
-Update company settings.
+Auto-provision a new tenant with Supabase project.
+
+**Request:**
+```json
+{
+  "slug": "auto-tenant",
+  "name": "Auto Tenant Inc",
+  "region": "us-east-1",
+  "branding": { "primaryColor": "#FF5733" },
+  "ragConfig": { "topK": 10 }
+}
+```
+
+**Response (HTTP 202 Accepted):**
+```json
+{
+  "tenant": {
+    "id": "uuid",
+    "slug": "auto-tenant",
+    "name": "Auto Tenant Inc",
+    "status": "provisioning",
+    "createdAt": "2024-01-15T10:00:00Z"
+  },
+  "supabase": {
+    "projectRef": "abc123xyz",
+    "apiUrl": "https://abc123xyz.supabase.co",
+    "storageBucket": "documents",
+    "region": "us-east-1"
+  },
+  "features": {
+    "database": true,
+    "storage": true,
+    "cdn": true
+  },
+  "message": "Tenant created. Database migrations running in background. Poll GET /api/tenants/{slug} to check status."
+}
+```
+
+#### `PATCH /api/tenants/[slug]`
+
+Update tenant settings.
 
 **Request:**
 ```json
 {
   "name": "Updated Name",
-  "branding": {
-    "primaryColor": "#FF5733"
-  },
-  "llm_config": {
-    "model": "gpt-4-turbo"
-  }
+  "branding": { "primaryColor": "#FF5733" },
+  "ragConfig": { "topK": 10 },
+  "status": "suspended"
 }
 ```
 
-#### `PATCH /api/companies/[slug]/branding`
+#### `DELETE /api/tenants/[slug]`
 
-Update branding with logo upload.
+Soft delete tenant (set status to 'deleted').
 
-**Request (multipart/form-data):**
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Tenant deleted (soft delete)",
+  "note": "Use ?hard=true to permanently delete the tenant and Supabase project"
+}
 ```
-branding: {"primaryColor":"#FF5733",...}
-logo: [file]
+
+#### `DELETE /api/tenants/[slug]?hard=true`
+
+**IRREVERSIBLE** - Permanently delete tenant AND Supabase project (database + storage).
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Tenant permanently deleted",
+  "deleted": {
+    "tenant": true,
+    "supabaseProject": true,
+    "projectRef": "abc123xyz"
+  }
+}
 ```
 
 ---
 
 ### Documents API
 
-#### `GET /api/documents`
+#### `POST /api/documents/upload`
 
-List documents for a company.
+Upload and process a new document. Supports PDF, DOCX, TXT, MD files up to 10MB.
+
+**Request (multipart/form-data):**
+```
+tenantSlug: acme-corp
+title: Q3 Financial Report (optional)
+file: [file]
+docType: disclosure | faq | report | filing | other
+url: https://source-url.com (optional)
+```
+
+**Response (HTTP 201):**
+```json
+{
+  "document": {
+    "id": "uuid",
+    "title": "Q3 Financial Report",
+    "fileName": "q3-report.pdf",
+    "fileSize": 1234567,
+    "status": "ready",
+    "chunkCount": 45,
+    "hasOriginalFile": true,
+    "createdAt": "2024-01-10T00:00:00Z"
+  },
+  "metadata": {
+    "pages": 12,
+    "wordCount": 5000
+  },
+  "debug": {
+    "traceId": "uuid",
+    "parse_ms": 150,
+    "chunking_ms": 50,
+    "embedding_ms": 800,
+    "total_ms": 1200
+  }
+}
+```
+
+**Supported File Types:**
+| Extension | MIME Type |
+|-----------|-----------|
+| `.pdf` | application/pdf |
+| `.docx` | application/vnd.openxmlformats-officedocument.wordprocessingml.document |
+| `.txt` | text/plain |
+| `.md` | text/markdown |
+
+#### `GET /api/documents/[id]/download`
+
+Get signed URL for downloading original file.
 
 **Query Parameters:**
 | Param | Type | Description |
 |-------|------|-------------|
-| `companySlug` | string | Required - company filter |
-| `status` | string | Filter by status |
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": "uuid",
-      "company_slug": "acme-corp",
-      "title": "Annual Report 2024",
-      "doc_type": "disclosure",
-      "status": "ready",
-      "chunk_count": 45,
-      "created_at": "2024-01-10T00:00:00Z"
-    }
-  ]
-}
-```
-
-#### `GET /api/documents/[id]`
-
-Get document details with chunks.
-
-**Response:**
-```json
-{
-  "id": "uuid",
-  "title": "Annual Report 2024",
-  "content": "...",
-  "status": "ready",
-  "chunk_count": 45,
-  "chunks": [
-    {
-      "id": "uuid",
-      "content": "Chunk content...",
-      "chunk_index": 0
-    }
-  ]
-}
-```
-
-#### `POST /api/documents/upload`
-
-Upload and process a new document.
-
-**Request (multipart/form-data):**
-```
-companySlug: acme-corp
-title: Q3 Financial Report
-file: [file]
-docType: disclosure
-```
-
-OR for text content:
-
-**Request (JSON):**
-```json
-{
-  "companySlug": "acme-corp",
-  "title": "FAQ Document",
-  "content": "# FAQ\n\nQuestion 1...",
-  "docType": "faq"
-}
-```
+| `tenantSlug` | string | Required - tenant identifier |
 
 **Response:**
 ```json
 {
   "document": {
     "id": "uuid",
-    "title": "Q3 Financial Report",
-    "status": "processing"
+    "fileName": "annual-report.pdf",
+    "mimeType": "application/pdf",
+    "fileSize": 1234567
   },
-  "message": "Document uploaded. Processing chunks..."
+  "download": {
+    "url": "https://xyz.supabase.co/storage/v1/object/sign/documents/...",
+    "expiresAt": "2024-01-15T11:00:00Z"
+  }
+}
+```
+
+**Error (no original file):**
+```json
+{
+  "error": "Original file not available",
+  "code": "NO_ORIGINAL_FILE"
 }
 ```
 
 #### `DELETE /api/documents/[id]`
 
-Delete document and all chunks.
+Delete document, chunks, and original file from storage.
+
+**Query Parameters:**
+| Param | Type | Description |
+|-------|------|-------------|
+| `tenantSlug` | string | Required - tenant identifier |
 
 **Response:**
 ```json
@@ -369,7 +442,8 @@ Delete document and all chunks.
   "success": true,
   "deleted": {
     "document_id": "uuid",
-    "chunks_deleted": 45
+    "chunks_deleted": 45,
+    "storage_deleted": true
   }
 }
 ```

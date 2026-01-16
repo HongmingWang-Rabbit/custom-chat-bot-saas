@@ -54,7 +54,7 @@ export const tenants = pgTable('tenants', {
   // RAG configuration (JSONB)
   ragConfig: jsonb('rag_config').$type<RAGConfig>().default({
     topK: 5,
-    confidenceThreshold: 0.6,
+    confidenceThreshold: 0.25, // Lower for OpenAI embeddings (cosine similarity)
     chunkSize: 500,
     chunkOverlap: 50,
   }),
@@ -95,7 +95,7 @@ export interface RAGConfig {
   chunkOverlap: number;
 }
 
-export type TenantStatus = 'active' | 'suspended' | 'pending' | 'deleted';
+export type TenantStatus = 'active' | 'suspended' | 'pending' | 'deleted' | 'provisioning' | 'error';
 
 // Default values
 export const DEFAULT_BRANDING: TenantBranding = {

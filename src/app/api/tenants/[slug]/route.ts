@@ -63,7 +63,8 @@ export async function GET(
 
   try {
     const tenantService = getTenantService();
-    const tenant = await tenantService.getTenant(slug);
+    // Use getTenantAnyStatus to allow polling provisioning status
+    const tenant = await tenantService.getTenantAnyStatus(slug);
 
     if (!tenant) {
       return Response.json(
@@ -72,8 +73,8 @@ export async function GET(
       );
     }
 
-    // Return safe fields
-    return Response.json({
+    // Build response with status-specific info
+    const response: Record<string, unknown> = {
       tenant: {
         id: tenant.id,
         slug: tenant.slug,
@@ -87,7 +88,20 @@ export async function GET(
         createdAt: tenant.createdAt,
         updatedAt: tenant.updatedAt,
       },
-    });
+    };
+
+    // Add helpful info for provisioning/error statuses
+    if (tenant.status === 'provisioning') {
+      response.message = 'Tenant is being provisioned. Database migrations are running in the background.';
+      response.ready = false;
+    } else if (tenant.status === 'error') {
+      response.message = 'Tenant provisioning failed. Check logs or retry provisioning.';
+      response.ready = false;
+    } else if (tenant.status === 'active') {
+      response.ready = true;
+    }
+
+    return Response.json(response);
   } catch (error) {
     log.error({ event: 'get_error', slug, error: error instanceof Error ? error.message : String(error) }, 'Failed to get tenant');
     return Response.json(
@@ -179,19 +193,36 @@ export async function PATCH(
 }
 
 // =============================================================================
-// DELETE Handler - Soft Delete Tenant
+// DELETE Handler - Delete Tenant
 // =============================================================================
 
+/**
+ * DELETE /api/tenants/[slug]
+ *
+ * Query parameters:
+ * - hard=true: Permanently delete tenant AND Supabase project (database + storage)
+ * - hard=false (default): Soft delete (set status to 'deleted')
+ *
+ * Hard delete is IRREVERSIBLE and will:
+ * 1. Delete the Supabase project (database and all data)
+ * 2. Delete the storage bucket and all files
+ * 3. Permanently remove the tenant record
+ */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
+  const { searchParams } = new URL(request.url);
+  const hardDelete = searchParams.get('hard') === 'true';
 
   const tenantService = getTenantService();
 
-  // Check tenant exists
-  const existing = await tenantService.getTenant(slug);
+  // Check tenant exists (use getTenantAnyStatus for hard delete of non-active tenants)
+  const existing = hardDelete
+    ? await tenantService.getTenantAnyStatus(slug)
+    : await tenantService.getTenant(slug);
+
   if (!existing) {
     return Response.json(
       { error: 'Tenant not found', code: 'NOT_FOUND' },
@@ -200,13 +231,48 @@ export async function DELETE(
   }
 
   try {
-    await tenantService.deleteTenant(slug);
-    log.info({ event: 'tenant_deleted', slug }, 'Tenant deleted');
-    return Response.json({ success: true, message: 'Tenant deleted' });
+    if (hardDelete) {
+      // Hard delete - removes Supabase project and tenant record
+      log.info({ event: 'hard_delete_requested', slug }, 'Hard delete requested');
+
+      const result = await tenantService.hardDeleteTenant(slug);
+
+      log.info(
+        { event: 'tenant_hard_deleted', slug, ...result },
+        'Tenant hard deleted'
+      );
+
+      return Response.json({
+        success: true,
+        message: 'Tenant permanently deleted',
+        deleted: {
+          tenant: result.tenantDeleted,
+          supabaseProject: result.supabaseDeleted,
+          projectRef: result.projectRef,
+        },
+      });
+    } else {
+      // Soft delete - just marks as deleted
+      await tenantService.deleteTenant(slug);
+      log.info({ event: 'tenant_deleted', slug }, 'Tenant soft deleted');
+      return Response.json({
+        success: true,
+        message: 'Tenant deleted (soft delete)',
+        note: 'Use ?hard=true to permanently delete the tenant and Supabase project',
+      });
+    }
   } catch (error) {
-    log.error({ event: 'delete_error', slug, error: error instanceof Error ? error.message : String(error) }, 'Failed to delete tenant');
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    log.error(
+      { event: 'delete_error', slug, hard: hardDelete, error: errorMsg },
+      'Failed to delete tenant'
+    );
     return Response.json(
-      { error: 'Failed to delete tenant', code: 'DELETE_ERROR' },
+      {
+        error: 'Failed to delete tenant',
+        code: 'DELETE_ERROR',
+        details: errorMsg,
+      },
       { status: 500 }
     );
   }

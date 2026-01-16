@@ -46,8 +46,17 @@ npm run db:studio        # Open Drizzle Studio
 npm run db:generate:tenant   # Generate tenant migrations
 TENANT_DATABASE_URL=... npm run db:push:tenant  # Push to specific tenant DB
 
+# Migrations (All databases)
+npm run migrate:all      # Run migrations on main + all tenant DBs
+npm run migrate:main     # Run migrations on main DB only
+npm run migrate:tenants  # Run migrations on all tenant DBs only
+npm run migrate:dry-run  # Preview what would be migrated
+
 # Seeding
 npm run seed             # Seed demo data
+
+# Utilities
+npx tsx scripts/update-document-urls.ts  # Update document URLs in DB
 ```
 
 ## Architecture
@@ -73,11 +82,15 @@ npm run seed             # Seed demo data
 
 | Path | Purpose |
 |------|---------|
-| `src/lib/services/tenant-service.ts` | Tenant CRUD, credential encryption/decryption, connection pooling |
-| `src/lib/rag/service.ts` | RAG pipeline orchestration: retrieve → rerank → prompt → generate |
-| `src/lib/rag/retrieval.ts` | pgvector similarity search with confidence scoring |
+| `src/lib/services/tenant-service.ts` | Tenant CRUD, credential encryption/decryption, connection pooling, hard delete |
+| `src/lib/services/storage-service.ts` | Supabase Storage upload/download, signed URLs |
+| `src/lib/rag/service.ts` | RAG pipeline orchestration: retrieve → rerank → prompt → generate (handles greetings) |
+| `src/lib/rag/retrieval.ts` | pgvector similarity search (default threshold: 0.25) |
+| `src/lib/rag/citations.ts` | Parse [Citation N] references from LLM response |
 | `src/lib/llm/adapter.ts` | Abstract LLM interface for provider switching |
 | `src/lib/llm/openai-adapter.ts` | OpenAI implementation |
+| `src/lib/supabase/storage-setup.ts` | Storage bucket creation during tenant provisioning |
+| `src/lib/supabase/provisioning.ts` | Auto-provision Supabase projects for new tenants |
 | `src/db/client.ts` | Drizzle clients with tenant connection pooling (5-min TTL, max 50) |
 
 ### RAG Flow
@@ -113,10 +126,20 @@ POST /api/qa
 
 ### Routes
 
+- `/` - Landing page with links to demo and admin
 - `/demo/[tenantSlug]` - Public Q&A interface
+- `/admin` - Dashboard with real-time stats
+- `/admin/documents` - Document management with upload
 - `/admin/review` - Q&A logs review with flagging
 - `/admin/tenants` - Tenant management
 - `POST /api/qa` - RAG query endpoint (supports streaming via SSE)
+- `POST /api/tenants` - Create tenant (manual credentials)
+- `POST /api/tenants/provision` - Auto-provision tenant (creates Supabase project + storage with CDN)
+- `GET /api/tenants/[slug]` - Get tenant details (supports polling provisioning status)
+- `DELETE /api/tenants/[slug]` - Soft delete tenant (set status to 'deleted')
+- `DELETE /api/tenants/[slug]?hard=true` - **Hard delete**: permanently removes tenant AND Supabase project
+- `POST /api/documents/upload` - Upload documents (PDF, DOCX, TXT, MD)
+- `GET /api/documents/[id]/download` - Get signed URL for original file download
 
 ### Tenant Isolation
 

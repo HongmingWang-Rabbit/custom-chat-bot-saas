@@ -24,6 +24,10 @@ import {
 // Create a child logger for RAG service
 const log = logger.child({ layer: 'rag', service: 'RAGService' });
 
+// Conversational query patterns (greetings and help requests)
+const GREETING_PATTERNS = /^(hi|hello|hey|good morning|good afternoon|good evening|howdy|greetings|what's up|sup)[\s!?.]*$/i;
+const HELP_PATTERNS = /^(help|what can you do|how can you help|what are you|who are you|how does this work|what is this)[\s!?.]*$/i;
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -74,7 +78,7 @@ export class RAGService {
     this.llm = createLLMAdapterFromConfig('openai', llmApiKey);
     this.ragConfig = {
       topK: ragConfig.topK ?? 5,
-      confidenceThreshold: ragConfig.confidenceThreshold ?? 0.6,
+      confidenceThreshold: ragConfig.confidenceThreshold ?? 0.25, // Lower for OpenAI embeddings
       chunkSize: ragConfig.chunkSize ?? 500,
       chunkOverlap: ragConfig.chunkOverlap ?? 50,
     };
@@ -82,10 +86,24 @@ export class RAGService {
   }
 
   /**
+   * Check if a query is conversational (greeting, help, capability question).
+   * These should be handled without RAG retrieval.
+   */
+  private isConversationalQuery(query: string): boolean {
+    const trimmed = query.trim();
+    return GREETING_PATTERNS.test(trimmed) || HELP_PATTERNS.test(trimmed);
+  }
+
+  /**
    * Execute a RAG query and return the complete response.
    */
   async query(request: RAGRequest): Promise<RAGResponse> {
     const startTime = Date.now();
+
+    // 0. Check for conversational queries (greetings, help) - skip retrieval
+    if (this.isConversationalQuery(request.query)) {
+      return this.createNoContextResponse(request.query, 0);
+    }
 
     // 1. Retrieve relevant chunks
     const retrieval = await retrieveWithConfig(
@@ -169,6 +187,14 @@ export class RAGService {
     let fullResponse = '';
 
     try {
+      // 0. Check for conversational queries (greetings, help) - skip retrieval
+      if (this.isConversationalQuery(request.query)) {
+        const conversationalResponse = this.createNoContextResponse(request.query, 0);
+        callbacks.onChunk?.(conversationalResponse.answer);
+        callbacks.onComplete?.(conversationalResponse);
+        return;
+      }
+
       // 1. Retrieve relevant chunks
       const retrieval = await retrieveWithConfig(
         this.db,
@@ -267,9 +293,34 @@ export class RAGService {
    * Create a response when no relevant context is found.
    */
   private createNoContextResponse(query: string, embeddingTokens: number): RAGResponse {
+    const trimmed = query.trim();
+    let answer: string;
+
+    if (GREETING_PATTERNS.test(trimmed)) {
+      answer = `Hello! I'm the Q&A assistant for this organization. I can help you find information from our documents and disclosures.
+
+You can ask me questions like:
+• What are the key risk factors?
+• Summarize the financial performance
+• What is the company's growth strategy?
+• Who are the board members?
+
+Feel free to ask any question about the company documents!`;
+    } else if (HELP_PATTERNS.test(trimmed)) {
+      answer = `I'm a document Q&A assistant powered by AI. I can answer questions based on the organization's uploaded documents and disclosures.
+
+Here's how I work:
+1. You ask a question about the company
+2. I search through the knowledge base to find relevant information
+3. I provide an answer with citations to the source documents
+
+Try asking about financial performance, risk factors, company strategy, or any other topic covered in the documents!`;
+    } else {
+      answer = "I couldn't find relevant information in the knowledge base to answer that question. Try asking about topics covered in the company's documents, such as financial performance, risk factors, or company strategy.";
+    }
+
     return {
-      answer:
-        "I don't have enough information in my knowledge base to answer this question confidently. Could you try rephrasing your question or ask about a different topic?",
+      answer,
       citations: [],
       confidence: 0,
       retrievedChunks: 0,
