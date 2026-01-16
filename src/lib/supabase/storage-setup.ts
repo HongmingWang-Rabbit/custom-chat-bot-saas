@@ -4,7 +4,8 @@
  * Creates and configures storage buckets for tenant projects.
  * Called during tenant provisioning to set up file storage.
  *
- * Uses the Storage API directly (not Management API) with service_role key.
+ * Uses the Supabase Management API with SUPABASE_ACCESS_TOKEN for bucket creation
+ * (bypasses RLS issues on newly created projects).
  */
 
 // =============================================================================
@@ -67,9 +68,65 @@ export class BucketExistsError extends Error {
 // API Helpers
 // =============================================================================
 
+const SUPABASE_API_BASE = 'https://api.supabase.com/v1';
+
+/**
+ * Make an authenticated request to the Supabase Management API.
+ * Uses SUPABASE_ACCESS_TOKEN for authentication.
+ */
+async function managementApi<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
+  if (!accessToken) {
+    throw new Error('SUPABASE_ACCESS_TOKEN is required for storage bucket creation');
+  }
+
+  const url = `${SUPABASE_API_BASE}${endpoint}`;
+
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    let errorMessage: string;
+
+    try {
+      const errorJson = JSON.parse(errorBody);
+      errorMessage = errorJson.message || errorJson.error || errorBody;
+    } catch {
+      errorMessage = errorBody;
+    }
+
+    // Handle bucket already exists (409 Conflict)
+    if (response.status === 409 || errorMessage.includes('already exists')) {
+      throw new BucketExistsError(errorMessage);
+    }
+
+    throw new Error(
+      `Supabase Management API error (${response.status}): ${errorMessage}`
+    );
+  }
+
+  // Handle empty responses (204 No Content)
+  if (response.status === 204) {
+    return {} as T;
+  }
+
+  return response.json();
+}
+
 /**
  * Make an authenticated request to the Supabase Storage API.
  * Uses the service_role key for authentication.
+ * Used for operations after bucket is created (upload, list, etc.).
  */
 async function storageApi<T>(
   projectRef: string,
@@ -129,17 +186,18 @@ const STORAGE_MAX_RETRIES = 10;
 const STORAGE_INITIAL_DELAY = 3000;
 
 /**
- * Create a storage bucket for a tenant's project.
+ * Create a storage bucket for a tenant's project using the Management API.
+ * Uses SUPABASE_ACCESS_TOKEN to bypass RLS issues on newly created projects.
  * Includes retry logic since storage service may not be ready immediately after project creation.
  *
  * @param projectRef - Supabase project reference (e.g., 'jdxhoqdnxshzbjasfhfz')
- * @param serviceKey - Service role key for the project
+ * @param _serviceKey - Service role key (unused, kept for API compatibility)
  * @param config - Bucket configuration options
  * @returns Bucket creation result
  */
 export async function createStorageBucket(
   projectRef: string,
-  serviceKey?: string,
+  _serviceKey?: string,
   config: Partial<StorageBucketConfig> = {}
 ): Promise<StorageBucketResult> {
   const bucketName = config.bucketName ?? DEFAULT_BUCKET_NAME;
@@ -147,26 +205,15 @@ export async function createStorageBucket(
   const fileSizeLimit = config.fileSizeLimit ?? MAX_FILE_SIZE;
   const allowedMimeTypes = config.allowedMimeTypes ?? ALLOWED_MIME_TYPES;
 
-  // If no service key provided, skip bucket creation (will be created on first upload)
-  if (!serviceKey) {
-    console.log(`[Storage] No service key provided, skipping bucket creation for ${projectRef}`);
-    return {
-      bucketId: bucketName,
-      bucketName: bucketName,
-      isPublic: isPublic,
-    };
-  }
-
   console.log(`[Storage] Creating bucket '${bucketName}' for project ${projectRef}`);
 
   // Retry logic for storage service initialization
   let lastError: Error | null = null;
   for (let attempt = 1; attempt <= STORAGE_MAX_RETRIES; attempt++) {
     try {
-      const bucket = await storageApi<SupabaseBucketResponse>(
-        projectRef,
-        serviceKey,
-        '/bucket',
+      // Use Management API to create bucket (bypasses RLS)
+      const bucket = await managementApi<SupabaseBucketResponse>(
+        `/projects/${projectRef}/storage/buckets`,
         {
           method: 'POST',
           body: JSON.stringify({
@@ -182,9 +229,9 @@ export async function createStorageBucket(
       console.log(`[Storage] Bucket '${bucketName}' created successfully`);
 
       return {
-        bucketId: bucket.name,
-        bucketName: bucket.name,
-        isPublic: bucket.public,
+        bucketId: bucket.name || bucketName,
+        bucketName: bucket.name || bucketName,
+        isPublic: bucket.public ?? isPublic,
       };
     } catch (error) {
       if (error instanceof BucketExistsError) {
