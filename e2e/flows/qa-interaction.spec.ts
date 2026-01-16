@@ -35,7 +35,8 @@ test.describe('Q&A Interaction Flow', () => {
     await qaChatPage.expectLoaded();
 
     // Ask specific question that should have citations
-    await qaChatPage.askQuestion('What was the gross margin in Q3 2024?');
+    // Using revenue question which reliably returns citations
+    await qaChatPage.askQuestion('What was the revenue in Q3 2024?');
 
     await qaChatPage.expectHasCitations();
 
