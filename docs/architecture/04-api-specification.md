@@ -171,6 +171,63 @@ Flag or unflag a Q&A log entry.
 }
 ```
 
+#### `POST /api/qa-logs/analyze`
+
+AI-powered analysis of Q&A logs to identify patterns, user concerns, and logs needing attention.
+
+**Request:**
+```json
+{
+  "tenantSlug": "acme-corp",
+  "logs": [
+    {
+      "id": "uuid",
+      "question": "What is the revenue?",
+      "answer": "According to...",
+      "confidence": 0.85,
+      "flagged": false
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `tenantSlug` | string | Yes | Tenant identifier |
+| `logs` | array | Yes | Array of logs to analyze (1-100 items) |
+
+**Response:**
+```json
+{
+  "summary": {
+    "topTopics": ["revenue", "stock price", "dividends"],
+    "userConcerns": ["Financial performance clarity", "Investment risks"],
+    "attentionNeeded": [
+      {
+        "logId": "uuid",
+        "reason": "Low confidence answer about executive compensation",
+        "priority": "high"
+      }
+    ],
+    "overallInsights": "Users are primarily interested in financial metrics. Consider adding more documentation about Q3 performance."
+  },
+  "stats": {
+    "totalAnalyzed": 25,
+    "avgConfidence": 0.72,
+    "lowConfidenceCount": 5,
+    "flaggedCount": 2
+  },
+  "tokensUsed": 1234
+}
+```
+
+**Priority Levels:**
+| Priority | Criteria |
+|----------|----------|
+| `high` | Confidence <30%, user flagged, incomplete answer |
+| `medium` | Confidence 30-50%, topic gaps |
+| `low` | Minor issues, potential improvements |
+
 ---
 
 ### Tenants API

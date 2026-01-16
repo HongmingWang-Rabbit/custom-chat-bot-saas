@@ -6,7 +6,7 @@
 
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, sql, gte, lte } from 'drizzle-orm';
 import { getTenantService } from '@/lib/services/tenant-service';
 import { qaLogs } from '@/db/schema/tenant';
 import { logger } from '@/lib/logger';
@@ -22,6 +22,8 @@ const listLogsSchema = z.object({
   tenantSlug: z.string().min(1),
   flagged: z.enum(['true', 'false']).optional(),
   reviewed: z.enum(['true', 'false']).optional(),
+  confidenceMin: z.coerce.number().min(0).max(100).optional(),
+  confidenceMax: z.coerce.number().min(0).max(100).optional(),
   limit: z.coerce.number().min(1).max(100).optional().default(50),
   offset: z.coerce.number().min(0).optional().default(0),
 });
@@ -40,6 +42,8 @@ export async function GET(request: NextRequest) {
       tenantSlug: searchParams.get('tenantSlug'),
       flagged: searchParams.get('flagged') ?? undefined,
       reviewed: searchParams.get('reviewed') ?? undefined,
+      confidenceMin: searchParams.get('confidenceMin') ?? undefined,
+      confidenceMax: searchParams.get('confidenceMax') ?? undefined,
       limit: searchParams.get('limit') ?? undefined,
       offset: searchParams.get('offset') ?? undefined,
     };
@@ -59,7 +63,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { tenantSlug, flagged, reviewed, limit, offset } = params;
+  const { tenantSlug, flagged, reviewed, confidenceMin, confidenceMax, limit, offset } = params;
 
   const tenantService = getTenantService();
   log.info({ event: 'get_tenant_db', tenantSlug }, 'Getting tenant database');
@@ -83,6 +87,12 @@ export async function GET(request: NextRequest) {
     if (reviewed !== undefined) {
       conditions.push(eq(qaLogs.reviewed, reviewed === 'true'));
     }
+    if (confidenceMin !== undefined) {
+      conditions.push(gte(qaLogs.confidence, confidenceMin / 100));
+    }
+    if (confidenceMax !== undefined) {
+      conditions.push(lte(qaLogs.confidence, confidenceMax / 100));
+    }
 
     // Execute query
     const logs = await tenantDb
@@ -102,20 +112,20 @@ export async function GET(request: NextRequest) {
     const total = Number(countResult[0]?.count ?? 0);
 
     return Response.json({
-      logs: logs.map((log) => ({
-        id: log.id,
-        question: log.question,
-        answer: log.answer,
-        citations: log.citations,
-        confidence: log.confidence,
-        flagged: log.flagged,
-        flaggedAt: log.flaggedAt,
-        flaggedReason: log.flaggedReason,
-        reviewed: log.reviewed,
-        reviewedAt: log.reviewedAt,
-        reviewerNotes: log.reviewerNotes,
-        sessionId: log.sessionId,
-        createdAt: log.createdAt,
+      logs: logs.map((qaLog) => ({
+        id: qaLog.id,
+        question: qaLog.question,
+        answer: qaLog.answer,
+        citations: qaLog.citations,
+        confidence: qaLog.confidence,
+        flagged: qaLog.flagged,
+        flaggedAt: qaLog.flaggedAt,
+        flaggedReason: qaLog.flaggedReason,
+        reviewed: qaLog.reviewed,
+        reviewedAt: qaLog.reviewedAt,
+        reviewerNotes: qaLog.reviewerNotes,
+        sessionId: qaLog.sessionId,
+        createdAt: qaLog.createdAt,
       })),
       pagination: {
         total,

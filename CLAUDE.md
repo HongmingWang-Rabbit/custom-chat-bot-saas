@@ -89,6 +89,8 @@ npx tsx scripts/update-document-urls.ts  # Update document URLs in DB
 | `src/lib/rag/citations.ts` | Parse [Citation N] references from LLM response |
 | `src/lib/llm/adapter.ts` | Abstract LLM interface for provider switching |
 | `src/lib/llm/openai-adapter.ts` | OpenAI implementation |
+| `src/lib/llm/analysis-prompts.ts` | LLM prompts for Q&A log analysis |
+| `src/components/documents/` | Reusable document management components |
 | `src/lib/supabase/storage-setup.ts` | Storage bucket creation during tenant provisioning |
 | `src/lib/supabase/provisioning.ts` | Auto-provision Supabase projects for new tenants |
 | `src/db/client.ts` | Drizzle clients with tenant connection pooling (5-min TTL, max 50) |
@@ -130,7 +132,7 @@ POST /api/qa
 - `/demo/[tenantSlug]` - Public Q&A interface
 - `/admin` - Dashboard with real-time stats
 - `/admin/documents` - Document management with upload
-- `/admin/review` - Q&A logs review with flagging
+- `/admin/review` - Q&A logs review with flagging and AI analysis
 - `/admin/tenants` - Tenant management
 - `POST /api/qa` - RAG query endpoint (supports streaming via SSE)
 - `POST /api/tenants` - Create tenant (manual credentials)
@@ -140,6 +142,7 @@ POST /api/qa
 - `DELETE /api/tenants/[slug]?hard=true` - **Hard delete**: permanently removes tenant AND Supabase project
 - `POST /api/documents/upload` - Upload documents (PDF, DOCX, TXT, MD)
 - `GET /api/documents/[id]/download` - Get signed URL for original file download
+- `POST /api/qa-logs/analyze` - AI-powered analysis of Q&A logs (topics, concerns, attention needed)
 
 ### Tenant Isolation
 

@@ -761,21 +761,26 @@ src/components/
 │   ├── admin-sidebar.tsx        # Admin navigation
 │   └── company-header.tsx       # Branded header for demo
 │
-└── features/
-    ├── qa/
-    │   ├── question-form.tsx
-    │   ├── answer-display.tsx
-    │   ├── citations-list.tsx
-    │   └── confidence-badge.tsx
-    │
-    ├── admin/
-    │   ├── qa-logs-table.tsx
-    │   ├── flag-button.tsx
-    │   ├── company-form.tsx
-    │   └── branding-editor.tsx
-    │
-    └── documents/
-        ├── document-uploader.tsx
-        ├── document-list.tsx
-        └── chunk-preview.tsx
+├── features/
+│   ├── qa/
+│   │   ├── question-form.tsx
+│   │   ├── answer-display.tsx
+│   │   ├── citations-list.tsx
+│   │   └── confidence-badge.tsx
+│   │
+│   └── admin/
+│       ├── qa-logs-table.tsx
+│       ├── flag-button.tsx
+│       ├── company-form.tsx
+│       └── branding-editor.tsx
+│
+└── documents/                       # Reusable document components
+    ├── index.ts                     # Barrel exports
+    ├── types.ts                     # Document/Tenant interfaces
+    ├── constants.ts                 # DOC_TYPES, STATUS_COLORS, formatFileSize
+    ├── ConfirmModal.tsx             # Reusable confirm dialog (danger/primary)
+    ├── DocumentCard.tsx             # Document card with actions
+    ├── DocumentViewModal.tsx        # Document details viewer
+    ├── DocumentEditModal.tsx        # Document metadata editor
+    └── UploadModal.tsx              # File upload with drag & drop
 ```

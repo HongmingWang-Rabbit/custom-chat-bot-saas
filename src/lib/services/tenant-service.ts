@@ -149,6 +149,12 @@ export class TenantService {
     const tenant = await this.getTenant(slug);
     if (!tenant) return null;
 
+    // Database URL is required for a functioning tenant
+    if (!tenant.encryptedDatabaseUrl) {
+      log.warn({ event: 'missing_database_url', slug }, 'Tenant has no encrypted database URL');
+      return null;
+    }
+
     try {
       return {
         id: tenant.id,
