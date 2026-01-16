@@ -121,7 +121,7 @@ async function getTenants(mainDb: ReturnType<typeof drizzle>): Promise<Tenant[]>
     WHERE status = 'active' AND encrypted_database_url IS NOT NULL
     ORDER BY slug
   `);
-  return result as Tenant[];
+  return result as unknown as Tenant[];
 }
 
 async function migrateTenant(
@@ -164,7 +164,7 @@ async function migrateTenant(
     // Step 1: Get all chunks
     const chunks = await tenantDb.execute(sql`
       SELECT id, content FROM document_chunks ORDER BY id
-    `) as Chunk[];
+    `) as unknown as Chunk[];
 
     if (chunks.length === 0) {
       console.log('  No chunks to migrate');
