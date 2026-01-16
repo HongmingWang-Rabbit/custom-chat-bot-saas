@@ -37,7 +37,7 @@ const updateTenantSchema = z.object({
   llmProvider: z.enum(['openai', 'anthropic', 'azure']).optional(),
   ragConfig: z
     .object({
-      topK: z.number().min(1).max(20).optional(),
+      topK: z.number().min(1).max(50).optional(),
       confidenceThreshold: z.number().min(0).max(1).optional(),
       chunkSize: z.number().min(100).max(2000).optional(),
       chunkOverlap: z.number().min(0).max(500).optional(),

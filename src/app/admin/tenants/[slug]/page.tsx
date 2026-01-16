@@ -515,9 +515,9 @@ function RAGSettings({
           onChange={(e) => setRagConfig({ ...ragConfig, topK: parseInt(e.target.value) || 5 })}
           className="w-full px-3 py-2 border rounded-lg text-gray-900 dark:text-white dark:bg-gray-700 dark:border-gray-600"
           min={1}
-          max={20}
+          max={50}
         />
-        <p className="text-xs text-gray-500 mt-1">Number of document chunks to retrieve for context</p>
+        <p className="text-xs text-gray-500 mt-1">Number of document chunks to retrieve for context (1-50)</p>
       </div>
 
       <div>
