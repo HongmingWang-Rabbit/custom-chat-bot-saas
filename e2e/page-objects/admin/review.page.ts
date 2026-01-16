@@ -64,7 +64,7 @@ export class ReviewPage extends BasePage {
 
   // Log cards
   get logCards() {
-    return this.page.locator('[class*="rounded-xl"][class*="cursor-pointer"]');
+    return this.page.getByTestId('qa-log-card');
   }
 
   // Detail modal

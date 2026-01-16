@@ -483,6 +483,7 @@ function LogCard({ log, onClick }: { log: QALog; onClick: () => void }) {
   return (
     <div
       onClick={onClick}
+      data-testid="qa-log-card"
       className="bg-white rounded-xl border border-gray-200 p-6 hover:border-blue-300 hover:shadow-sm transition-all cursor-pointer"
     >
       <div className="flex items-start justify-between gap-4">
