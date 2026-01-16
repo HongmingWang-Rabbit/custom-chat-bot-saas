@@ -50,18 +50,40 @@ Return Response
 
 This keeps the AI behavior predictable and auditable while the infrastructure handles production concerns like multi-tenancy, caching, and security.
 
+## Assumptions
+
+The following assumptions were made during development:
+
+1. **Multi-tenant isolation is critical** - Used separate databases per tenant rather than `company_slug` filtering for stronger data isolation, security compliance, and independent scaling.
+
+2. **Documents are pre-processed** - The seed script handles chunking and embedding generation. In production, this would be an async job triggered on document upload.
+
+3. **OpenAI is the LLM provider** - The adapter pattern allows switching providers, but OpenAI is used for both embeddings (text-embedding-3-small) and generation (GPT-4o).
+
+4. **Confidence threshold of 0.25** - Vector similarity scores below this threshold are considered low-confidence and trigger a safe fallback response.
+
+5. **No authentication required** - Per the spec, the admin review page has no auth. In production, this would be protected.
+
+6. **English language only** - The RAG pipeline and prompts are optimized for English documents and queries.
+
+7. **Supabase for hosting** - Tenant databases are Supabase projects, enabling pgvector support and managed infrastructure.
+
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
 | Framework | Next.js 16 (App Router) |
-| Database | PostgreSQL + pgvector |
+| Language | TypeScript |
+| Database | PostgreSQL + pgvector (Supabase) |
 | ORM | Drizzle ORM |
-| LLM | OpenAI GPT-4o (adapter pattern) |
-| Embeddings | text-embedding-3-small (1536d) |
-| Encryption | AES-256-GCM |
+| Caching | Upstash Redis |
+| LLM | OpenAI GPT-4o |
+| Embeddings | OpenAI text-embedding-3-small (1536d) |
+| Validation | Zod |
+| Document Parsing | pdf-parse, mammoth (DOCX) |
+| Encryption | AES-256-GCM (Node.js crypto) |
 | Logging | Pino |
-| Testing | Vitest |
+| Testing | Vitest, Playwright (E2E) |
 | Styling | Tailwind CSS |
 | Deployment | Vercel + Supabase |
 
